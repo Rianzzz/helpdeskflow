@@ -1,9 +1,13 @@
+using HelpDeskFlow.Observability;
 using System.Threading.RateLimiting;
 using HelpDeskFlow.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Logs estruturados + traces + métricas (building block compartilhado).
+builder.AddHelpDeskObservability("gateway");
 
 // ---- Kestrel: limites básicos de proteção ----
 builder.WebHost.ConfigureKestrel(o =>
@@ -67,6 +71,7 @@ builder.Services.AddCors(o => o.AddPolicy("web", p =>
 builder.Services.AddReverseProxy().LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
 var app = builder.Build();
+app.UseHelpDeskObservability(); // correlation id + log de requisições
 
 if (!app.Environment.IsDevelopment())
 {
@@ -81,20 +86,16 @@ app.UseExceptionHandler(h => h.Run(async ctx =>
     await ctx.Response.WriteAsJsonAsync(new { title = "Erro interno", status = 500 });
 }));
 
-// ---- Correlation ID + cabeçalhos de segurança ----
+// ---- Cabeçalhos de segurança (o X-Correlation-Id é gerado pelo middleware de observabilidade) ----
 app.Use(async (context, next) =>
 {
-    // Um id por requisição, repassado aos serviços: permite seguir UMA requisição pelos logs de todos.
-    var incoming = context.Request.Headers["X-Correlation-Id"].FirstOrDefault();
-    var correlationId = Guid.TryParse(incoming, out _) ? incoming! : Guid.NewGuid().ToString();
-    context.Request.Headers["X-Correlation-Id"] = correlationId;
-
     context.Response.OnStarting(() =>
     {
         var h = context.Response.Headers;
         h.Remove("Server");                       // o proxy copiaria o "Server: Kestrel" dos serviços internos
         h.Remove("X-Powered-By");
-        h["X-Correlation-Id"] = correlationId;
+        // O proxy copia o X-Correlation-Id da resposta do serviço; aqui garantimos um valor só, o desta requisição.
+        h[ObservabilityExtensions.CorrelationHeader] = context.Request.Headers[ObservabilityExtensions.CorrelationHeader].ToString();
         h["X-Content-Type-Options"] = "nosniff";
         h["X-Frame-Options"] = "DENY";
         h["Referrer-Policy"] = "no-referrer";
@@ -112,6 +113,7 @@ app.UseRateLimiter();   // depois da autenticação: assim já sabemos o tenant 
 app.UseAuthorization();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+app.MapHelpDeskHealth();
 app.MapReverseProxy();
 
 app.Run();

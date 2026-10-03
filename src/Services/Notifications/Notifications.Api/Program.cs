@@ -1,3 +1,4 @@
+using HelpDeskFlow.Observability;
 using System.Security.Claims;
 using HelpDeskFlow.Auth;
 using HelpDeskFlow.Contracts;
@@ -8,6 +9,12 @@ using Notifications.Api.Data;
 using Notifications.Api.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Logs estruturados + traces + métricas + health checks (building block compartilhado).
+builder.AddHelpDeskObservability("notifications");
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<NotificationsDbContext>("postgres", tags: ["ready"])
+    .AddRabbitMqCheck();
 
 builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false);
 builder.Services.AddOpenApi();
@@ -28,6 +35,7 @@ builder.Services.AddEventHandler<TenantActivated, TenantActivatedHandler>();
 builder.Services.AddEventHandler<TenantProvisioningFailed, TenantProvisioningFailedHandler>();
 
 var app = builder.Build();
+app.UseHelpDeskObservability();
 
 app.UseExceptionHandler(h => h.Run(async ctx =>
 {
@@ -74,6 +82,8 @@ api.MapPut("/{id:guid}/read", async (Guid id, ClaimsPrincipal user, Notification
     await db.SaveChangesAsync(ct);
     return Results.NoContent();
 });
+
+app.MapHelpDeskHealth();
 
 app.Run();
 

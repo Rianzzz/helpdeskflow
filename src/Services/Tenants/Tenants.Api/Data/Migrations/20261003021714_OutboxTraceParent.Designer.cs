@@ -2,22 +2,25 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using Tickets.Infrastructure.Persistence;
+using Tenants.Api.Data;
 
 #nullable disable
 
-namespace Tickets.Infrastructure.Persistence.Migrations
+namespace Tenants.Api.Data.Migrations
 {
-    [DbContext(typeof(TicketsDbContext))]
-    partial class TicketsDbContextModelSnapshot : ModelSnapshot
+    [DbContext(typeof(TenantsDbContext))]
+    [Migration("20261003021714_OutboxTraceParent")]
+    partial class OutboxTraceParent
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasDefaultSchema("tickets")
+                .HasDefaultSchema("tenants")
                 .HasAnnotation("ProductVersion", "9.0.20")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
@@ -73,15 +76,57 @@ namespace Tickets.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProcessedAt", "CreatedAt")
                         .HasDatabaseName("ix_outbox_messages_processed_at_created_at");
 
-                    b.ToTable("outbox_messages", "tickets");
+                    b.ToTable("outbox_messages", "tenants");
                 });
 
-            modelBuilder.Entity("Tickets.Domain.Entities.KnownUser", b =>
+            modelBuilder.Entity("Tenants.Api.Domain.OnboardingState", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("CompanyName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("company_name");
+
+                    b.Property<DateTime>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("outcome");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.HasKey("TenantId")
+                        .HasName("pk_onboarding_states");
+
+                    b.ToTable("onboarding_states", "tenants");
+                });
+
+            modelBuilder.Entity("Tenants.Api.Domain.TenantProfile", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("MaxUsers")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_users");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -89,90 +134,26 @@ namespace Tickets.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(150)")
                         .HasColumnName("name");
 
-                    b.Property<string>("Role")
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("normalized_name");
+
+                    b.Property<string>("Plan")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
-                        .HasColumnName("role");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
+                        .HasColumnName("plan");
 
                     b.HasKey("Id")
-                        .HasName("pk_known_users");
+                        .HasName("pk_tenant_profiles");
 
-                    b.HasIndex("TenantId")
-                        .HasDatabaseName("ix_known_users_tenant_id");
+                    b.HasIndex("NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_tenant_profiles_normalized_name");
 
-                    b.ToTable("known_users", "tickets");
-                });
-
-            modelBuilder.Entity("Tickets.Domain.Entities.Ticket", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid?>("AssigneeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("assignee_id");
-
-                    b.Property<DateTime?>("ClosedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("closed_at");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
-                        .HasColumnName("description");
-
-                    b.Property<string>("Priority")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("priority");
-
-                    b.Property<Guid>("RequesterId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("requester_id");
-
-                    b.Property<DateTime?>("SlaBreachedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("sla_breached_at");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("status");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("title");
-
-                    b.HasKey("Id")
-                        .HasName("pk_tickets");
-
-                    b.HasIndex("RequesterId")
-                        .HasDatabaseName("ix_tickets_requester_id");
-
-                    b.HasIndex("TenantId", "Status")
-                        .HasDatabaseName("ix_tickets_tenant_id_status");
-
-                    b.ToTable("tickets", "tickets");
+                    b.ToTable("tenant_profiles", "tenants");
                 });
 #pragma warning restore 612, 618
         }

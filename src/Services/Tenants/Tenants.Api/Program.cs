@@ -1,3 +1,4 @@
+using HelpDeskFlow.Observability;
 using System.Security.Claims;
 using HelpDeskFlow.Auth;
 using HelpDeskFlow.Contracts;
@@ -9,6 +10,12 @@ using Tenants.Api.Data;
 using Tenants.Api.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Logs estruturados + traces + métricas + health checks (building block compartilhado).
+builder.AddHelpDeskObservability("tenants");
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<TenantsDbContext>("postgres", tags: ["ready"])
+    .AddRabbitMqCheck();
 
 builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false);
 builder.Services.AddOpenApi();
@@ -23,6 +30,7 @@ builder.Services.AddEventHandler<TenantRegistered, TenantRegisteredHandler>();
 builder.Services.AddEventHandler<TenantRegistrationExpired, TenantRegistrationExpiredHandler>();
 
 var app = builder.Build();
+app.UseHelpDeskObservability();
 
 app.UseExceptionHandler(h => h.Run(async ctx =>
 {
@@ -53,5 +61,7 @@ app.MapGet("/api/tenants/me", async (ClaimsPrincipal user, TenantsDbContext db, 
 
     return profile is null ? Results.NotFound() : Results.Ok(profile);
 }).RequireAuthorization().WithTags("Tenants");
+
+app.MapHelpDeskHealth();
 
 app.Run();

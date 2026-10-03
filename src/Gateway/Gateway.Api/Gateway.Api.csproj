@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\BuildingBlocks\HelpDeskFlow.Auth\HelpDeskFlow.Auth.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\HelpDeskFlow.Observability\HelpDeskFlow.Observability.csproj" />
   </ItemGroup>
 
   <ItemGroup>

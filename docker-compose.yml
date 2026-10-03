@@ -35,6 +35,16 @@ services:
       timeout: 5s
       retries: 10
 
+  # Visualizador de traces (opcional): docker compose --profile observability up -d
+  # Interface: http://localhost:16686  |  Receptor OTLP (gRPC): localhost:4317
+  jaeger:
+    image: jaegertracing/jaeger:2.11.0
+    container_name: helpdesk-jaeger
+    profiles: ["observability"]
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+
 volumes:
   helpdesk-pgdata:
   helpdesk-rabbitdata:

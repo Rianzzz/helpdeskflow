@@ -16,6 +16,18 @@ public class OutboxMessage
     public DateTime? ProcessedAt { get; set; }
     public int Attempts { get; set; }
     public string? LastError { get; set; }
+
+    /// <summary>
+    /// Contexto de trace (W3C "traceparent") da requisição que gerou o evento. O dispatcher o restaura ao publicar,
+    /// então o trace continua ligado mesmo o envio acontecendo depois, em outro momento.
+    /// </summary>
+    public string? TraceParent { get; set; }
+}
+
+public static class OutboxTelemetry
+{
+    /// <summary>Mesmo nome registrado em HelpDeskFlow.Observability (AddSource).</summary>
+    public static readonly System.Diagnostics.ActivitySource Source = new("HelpDeskFlow");
 }
 
 public static class OutboxModelExtensions
@@ -30,6 +42,7 @@ public static class OutboxModelExtensions
             e.Property(o => o.Type).HasMaxLength(200).IsRequired();
             e.Property(o => o.Payload).IsRequired();
             e.Property(o => o.LastError).HasMaxLength(2000);
+            e.Property(o => o.TraceParent).HasMaxLength(100);
             e.HasIndex(o => new { o.ProcessedAt, o.CreatedAt });
         });
         return modelBuilder;

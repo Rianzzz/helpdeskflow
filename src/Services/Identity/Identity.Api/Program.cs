@@ -1,3 +1,4 @@
+using HelpDeskFlow.Observability;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using HelpDeskFlow.Auth;
@@ -12,6 +13,12 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Logs estruturados + traces + métricas + health checks (building block compartilhado).
+builder.AddHelpDeskObservability("identity");
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<IdentityDbContext>("postgres", tags: ["ready"])
+    .AddRabbitMqCheck();
 
 builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false); // não anuncia tecnologia/versão
 builder.Services.AddOpenApi();
@@ -42,6 +49,7 @@ builder.Services.AddRateLimiter(o =>
 });
 
 var app = builder.Build();
+app.UseHelpDeskObservability();
 
 app.UseForwardedHeaders();
 
@@ -118,6 +126,8 @@ usersGroup.MapPost("/", async (CreateUserRequest r, ClaimsPrincipal principal, A
     var created = await s.CreateUserAsync(principal.TenantId(), r, ct);
     return Results.Created($"/api/users/{created.Id}", created);
 }).RequireAuthorization(Policies.AdminOnly);
+
+app.MapHelpDeskHealth();
 
 app.Run();
 

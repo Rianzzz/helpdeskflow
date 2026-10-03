@@ -35,6 +35,9 @@ src/BuildingBlocks/HelpDeskFlow.Auth   contrato compartilhado: papéis, claims, 
 src/BuildingBlocks/HelpDeskFlow.Contracts            eventos de integração + interfaces (sem dependências)
 src/BuildingBlocks/HelpDeskFlow.Messaging.RabbitMq   publicador/consumidor sobre RabbitMQ.Client
 src/BuildingBlocks/HelpDeskFlow.Messaging.Outbox     Outbox transacional (publicação confiável de eventos)
+src/BuildingBlocks/HelpDeskFlow.Observability        logs (Serilog), traces/métricas (OpenTelemetry), correlation id, health checks
+tests/HelpDeskFlow.UnitTests                         testes unitários (domínio, serviços de aplicação com fakes)
+tests/HelpDeskFlow.IntegrationTests                  testes com PostgreSQL e RabbitMQ reais (Testcontainers)
 src/Services/Notifications/            consome eventos e gera notificações (serviço simples: um projeto só)
 src/Services/Tenants/                  perfil/plano da empresa e passo central da saga de onboarding
 src/Services/Identity/                 cadastro de empresas, login, JWT, refresh tokens, usuários
@@ -108,6 +111,32 @@ Timeout: se nada acontecer em 10 min, o Identity desiste, compensa e avisa o Ten
 - O Tenants guarda o **estado da saga** (`onboarding_states`): garante idempotência e que um aviso de expiração que chegue
   antes do cadastro impeça perfis órfãos
 - Conflito entre ativar e expirar ao mesmo tempo é resolvido por concorrência otimista (o status é token de concorrência)
+
+### Observabilidade
+
+- **Logs estruturados** (Serilog): legíveis no console em desenvolvimento, **JSON** em produção. Toda linha leva o nome do
+  serviço, `TraceId` e `CorrelationId`; consumidores acrescentam `EventId` e a fila. Uma linha por requisição HTTP
+- **Correlation ID**: o gateway cria (ou aceita só se for um GUID válido, contra "forjar" logs) o `X-Correlation-Id`,
+  que viaja para os serviços, volta na resposta e aparece em todos os logs da requisição
+- **Traces distribuídos** (OpenTelemetry): uma requisição vira uma árvore de spans por gateway → serviços → PostgreSQL →
+  RabbitMQ → outros serviços. O Outbox guarda o `traceparent`, então **o trace continua ligado mesmo com o envio assíncrono**
+  (uma saga inteira aparece como UM trace). Ative com `OTEL_EXPORTER_OTLP_ENDPOINT`; para visualizar:
+  ```
+  docker compose --profile observability up -d jaeger     # http://localhost:16686
+  ```
+  e rode os serviços com `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317`
+- **Métricas** (requisições, runtime .NET) exportadas pelo mesmo canal OTLP
+- **Health checks** públicos e sem detalhes sensíveis: `/health/live` (processo de pé) e `/health/ready` (PostgreSQL e RabbitMQ)
+
+### Testes
+
+```
+dotnet test tests/HelpDeskFlow.UnitTests          # rápido, sem dependências
+dotnet test tests/HelpDeskFlow.IntegrationTests   # precisa do Docker: sobe PostgreSQL e RabbitMQ e os 4 serviços
+```
+
+Os testes de integração exercitam a plataforma de verdade (saga de onboarding, isolamento entre empresas e papéis, JWT
+adulterado/forjado, bloqueio de conta, reuso de refresh token, idempotência, DLQ, job de SLA).
 
 ### Gateway (borda)
 

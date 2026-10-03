@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using HelpDeskFlow.Contracts;
 using HelpDeskFlow.Messaging.RabbitMq;
@@ -91,6 +92,13 @@ public sealed class OutboxDispatcher<TContext>(
         Exception? failure = null;
         foreach (var message in batch)
         {
+            // Retoma o trace da requisição original: no visualizador, "POST /api/tickets" e o envio do evento
+            // aparecem como partes da MESMA história, mesmo acontecendo em momentos diferentes.
+            ActivityContext.TryParse(message.TraceParent, null, out var parentContext);
+            using var activity = OutboxTelemetry.Source.StartActivity(
+                $"outbox publish {message.Type}", ActivityKind.Producer, parentContext);
+            activity?.SetTag("messaging.message.id", message.Id.ToString());
+
             try
             {
                 await publisher.PublishRawAsync(message.Type, message.Id, message.OccurredAt,

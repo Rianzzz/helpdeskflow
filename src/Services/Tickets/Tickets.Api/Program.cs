@@ -1,3 +1,4 @@
+using HelpDeskFlow.Observability;
 using HelpDeskFlow.Auth;
 using HelpDeskFlow.Messaging.RabbitMq;
 using Microsoft.AspNetCore.Diagnostics;
@@ -10,6 +11,12 @@ using Tickets.Infrastructure;
 using Tickets.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Logs estruturados + traces + métricas + health checks (building block compartilhado).
+builder.AddHelpDeskObservability("tickets");
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<TicketsDbContext>("postgres", tags: ["ready"])
+    .AddRabbitMqCheck();
 
 builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false); // não anuncia tecnologia/versão
 builder.Services.AddOpenApi();
@@ -25,6 +32,7 @@ builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 
 var app = builder.Build();
+app.UseHelpDeskObservability();
 
 // Converte exceções conhecidas em respostas HTTP corretas (400) em vez de 500.
 app.UseExceptionHandler(handler => handler.Run(async context =>
@@ -88,5 +96,7 @@ tickets.MapPut("/{id:guid}/close", async (Guid id, TicketService service, Cancel
 
 tickets.MapPut("/{id:guid}/reopen", async (Guid id, TicketService service, CancellationToken ct) =>
     await service.ReopenAsync(id, ct) is { } t ? Results.Ok(t) : Results.NotFound());
+
+app.MapHelpDeskHealth();
 
 app.Run();

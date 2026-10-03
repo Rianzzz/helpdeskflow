@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\HelpDeskFlow.Messaging.RabbitMq\HelpDeskFlow.Messaging.RabbitMq.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\HelpDeskFlow.Messaging.Outbox\HelpDeskFlow.Messaging.Outbox.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\HelpDeskFlow.Auth\HelpDeskFlow.Auth.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\HelpDeskFlow.Observability\HelpDeskFlow.Observability.csproj" />
   </ItemGroup>
 
 </Project>

@@ -95,6 +95,13 @@ public sealed class EventConsumerService<TEvent>(
             return;
         }
 
+        // Toda linha de log escrita enquanto este evento é tratado carrega o EventId e a fila.
+        using var logScope = logger.BeginScope(new Dictionary<string, object>
+        {
+            ["EventId"] = @event.EventId,
+            ["Queue"] = _queue
+        });
+
         for (var attempt = 1; attempt <= MaxAttempts; attempt++)
         {
             try

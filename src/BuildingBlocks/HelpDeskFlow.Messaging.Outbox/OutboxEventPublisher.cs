@@ -20,7 +20,8 @@ public sealed class OutboxEventPublisher<TContext>(TContext db) : IEventPublishe
             Type = TEvent.EventName,
             Payload = JsonSerializer.Serialize(@event, MessageSerializer.Options),
             OccurredAt = @event.OccurredAt,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            TraceParent = System.Diagnostics.Activity.Current?.Id // liga o trace da requisição ao envio assíncrono
         });
         return Task.CompletedTask;
     }
