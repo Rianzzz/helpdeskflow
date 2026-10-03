@@ -34,6 +34,11 @@ patches:
         value:
           - ports:
               - { protocol: TCP, port: 8080 }
+  # Cluster de 1 nó e poucos CPUs (notebook, runner do CI): com 100m por pod, 2 réplicas de cada serviço não cabem e
+  # ficam Pending. Aqui reduzimos só o REQUEST (a reserva); o limite continua o mesmo.
+  - target: { kind: Deployment }
+    patch: |-
+      - { op: replace, path: /spec/template/spec/containers/0/resources/requests/cpu, value: 20m }
   # Os testes de navegador fazem muitos logins por minuto do mesmo IP: sobe o limite (só neste overlay de teste).
   - target: { kind: ConfigMap, name: helpdeskflow-config }
     patch: |-

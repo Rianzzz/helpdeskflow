@@ -64,8 +64,14 @@ kubectl -n "$NS" delete pod intruso --wait=false >/dev/null
 
 echo "▶ Réplicas: matar pods não derruba a plataforma"
 for d in identity tickets tenants gateway web; do kubectl -n "$NS" scale "deployment/$d" --replicas=2 >/dev/null; done
-for d in identity tickets tenants gateway web; do kubectl -n "$NS" rollout status "deployment/$d" --timeout=240s >/dev/null; done
-ok "2 réplicas de cada serviço sem estado no ar"
+for d in identity tickets tenants gateway web; do
+  if ! kubectl -n "$NS" rollout status "deployment/$d" --timeout=240s >/dev/null; then
+    echo "  (diagnóstico) pods de $d:"; kubectl -n "$NS" get pods -l app.kubernetes.io/name="$d" -o wide
+    kubectl -n "$NS" describe pods -l app.kubernetes.io/name="$d" | grep -A8 "^Events:" || true
+    falha "$d não chegou a 2 réplicas prontas (falta de CPU/memória no cluster?)"
+  fi
+done
+[ "$falhas" -eq 0 ] && ok "2 réplicas de cada serviço sem estado no ar"
 
 web_url="${WEB_URL:-http://localhost:8088}"
 erros=0; total=0
