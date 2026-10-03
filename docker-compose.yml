@@ -1,14 +1,55 @@
-# Infraestrutura local de desenvolvimento. Credenciais abaixo são SÓ para dev local.
+# HelpDeskFlow: infraestrutura + (opcionalmente) todos os serviços.
+#
+#   Só a infraestrutura (para rodar os serviços pelo dotnet run / IDE):
+#       docker compose up -d
+#
+#   Plataforma COMPLETA em contêineres (precisa de um .env: veja .env.example):
+#       docker compose --profile apps up -d --build
+#       -> API em http://localhost:5000 (só o gateway é exposto; os serviços ficam numa rede privada)
+#
+#   Visualizador de traces (opcional):
+#       docker compose --profile observability up -d jaeger     -> http://localhost:16686
+#
+# Credenciais padrão abaixo são APENAS para desenvolvimento local.
+
+name: helpdeskflow
+
+x-app-environment: &app-environment
+  ASPNETCORE_ENVIRONMENT: Production
+  Database__MigrateOnStartup: "true"
+  RabbitMq__Host: rabbitmq
+  RabbitMq__User: helpdesk
+  RabbitMq__Password: ${RABBITMQ_PASSWORD:-helpdesk_dev}
+  # Sem valor padrão de propósito: a chave de assinatura precisa ser definida por você no .env.
+  Jwt__SigningKey: ${JWT_SIGNING_KEY:?Defina JWT_SIGNING_KEY no arquivo .env (veja .env.example)}
+  # Telemetria: só é exportada se o endpoint for informado (ex.: http://jaeger:4317).
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
+x-app-healthcheck: &app-healthcheck
+  # A imagem do ASP.NET não tem curl: usamos o bash para abrir uma conexão TCP e pedir /health/live.
+  test: ["CMD", "bash", "-c", 'exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e "GET /health/live HTTP/1.0\r\n\r\n" >&3 && head -n1 <&3 | grep -q 200']
+  interval: 10s
+  timeout: 5s
+  retries: 6
+  start_period: 20s
+
+x-app-depends-on: &app-depends-on
+  postgres:
+    condition: service_healthy
+  rabbitmq:
+    condition: service_healthy
+
 services:
+  # ───────────── Infraestrutura ─────────────
   postgres:
     image: postgres:17
     container_name: helpdesk-postgres
     environment:
       POSTGRES_DB: helpdesk
       POSTGRES_USER: helpdesk
-      POSTGRES_PASSWORD: helpdesk_dev
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-helpdesk_dev}
     ports:
-      - "5432:5432"
+      - "5432:5432"   # só para desenvolvimento: em produção NÃO exponha o banco
     volumes:
       - helpdesk-pgdata:/var/lib/postgresql/data
       - ./infra/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
@@ -17,15 +58,16 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks: [helpdesk]
 
   rabbitmq:
     image: rabbitmq:4-management
     container_name: helpdesk-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: helpdesk
-      RABBITMQ_DEFAULT_PASS: helpdesk_dev
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-helpdesk_dev}
     ports:
-      - "5672:5672"     # AMQP (os serviços usam esta)
+      - "5672:5672"     # AMQP (para os serviços rodando fora do Docker)
       - "15672:15672"   # painel de administração: http://localhost:15672
     volumes:
       - helpdesk-rabbitdata:/var/lib/rabbitmq
@@ -34,16 +76,99 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    networks: [helpdesk]
 
-  # Visualizador de traces (opcional): docker compose --profile observability up -d
-  # Interface: http://localhost:16686  |  Receptor OTLP (gRPC): localhost:4317
+  # Visualizador de traces (opcional): docker compose --profile observability up -d jaeger
   jaeger:
     image: jaegertracing/jaeger:2.11.0
     container_name: helpdesk-jaeger
     profiles: ["observability"]
     ports:
-      - "16686:16686"
-      - "4317:4317"
+      - "16686:16686"   # interface
+      - "4317:4317"     # receptor OTLP (gRPC)
+    networks: [helpdesk]
+
+  # ───────────── Serviços (profile "apps") ─────────────
+  identity:
+    profiles: ["apps"]
+    build: { context: ., dockerfile: docker/Dockerfile, target: identity }
+    image: helpdeskflow/identity:local
+    environment:
+      <<: *app-environment
+      ConnectionStrings__IdentityDb: Host=postgres;Port=5432;Database=helpdesk_identity;Username=helpdesk;Password=${POSTGRES_PASSWORD:-helpdesk_dev}
+      # O gateway fica nesta rede privada: confiamos no X-Forwarded-For SÓ dele (rate limit por IP do cliente real).
+      ForwardedHeaders__KnownNetworks__0: 172.28.0.0/16
+    depends_on: *app-depends-on
+    healthcheck: *app-healthcheck
+    restart: unless-stopped
+    networks: [helpdesk]
+
+  tickets:
+    profiles: ["apps"]
+    build: { context: ., dockerfile: docker/Dockerfile, target: tickets }
+    image: helpdeskflow/tickets:local
+    environment:
+      <<: *app-environment
+      ConnectionStrings__TicketsDb: Host=postgres;Port=5432;Database=helpdesk_tickets;Username=helpdesk;Password=${POSTGRES_PASSWORD:-helpdesk_dev}
+    depends_on: *app-depends-on
+    healthcheck: *app-healthcheck
+    restart: unless-stopped
+    networks: [helpdesk]
+
+  tenants:
+    profiles: ["apps"]
+    build: { context: ., dockerfile: docker/Dockerfile, target: tenants }
+    image: helpdeskflow/tenants:local
+    environment:
+      <<: *app-environment
+      ConnectionStrings__TenantsDb: Host=postgres;Port=5432;Database=helpdesk_tenants;Username=helpdesk;Password=${POSTGRES_PASSWORD:-helpdesk_dev}
+    depends_on: *app-depends-on
+    healthcheck: *app-healthcheck
+    restart: unless-stopped
+    networks: [helpdesk]
+
+  notifications:
+    profiles: ["apps"]
+    build: { context: ., dockerfile: docker/Dockerfile, target: notifications }
+    image: helpdeskflow/notifications:local
+    environment:
+      <<: *app-environment
+      ConnectionStrings__NotificationsDb: Host=postgres;Port=5432;Database=helpdesk_notifications;Username=helpdesk;Password=${POSTGRES_PASSWORD:-helpdesk_dev}
+    depends_on: *app-depends-on
+    healthcheck: *app-healthcheck
+    restart: unless-stopped
+    networks: [helpdesk]
+
+  gateway:
+    profiles: ["apps"]
+    build: { context: ., dockerfile: docker/Dockerfile, target: gateway }
+    image: helpdeskflow/gateway:local
+    environment:
+      <<: *app-environment
+      # TLS termina no proxy/ingress na frente do gateway; aqui falamos HTTP puro.
+      Https__Redirect: "false"
+      RateLimiting__AuthPermitPerMinute: ${AUTH_RATE_LIMIT_PER_MINUTE:-10}
+      # Nomes de serviço do Docker substituem os "localhost" do appsettings.json.
+      ReverseProxy__Clusters__identity__Destinations__identity-1__Address: http://identity:8080/
+      ReverseProxy__Clusters__tickets__Destinations__tickets-1__Address: http://tickets:8080/
+      ReverseProxy__Clusters__tenants__Destinations__tenants-1__Address: http://tenants:8080/
+      ReverseProxy__Clusters__notifications__Destinations__notifications-1__Address: http://notifications:8080/
+    depends_on:
+      identity: { condition: service_healthy }
+      tickets: { condition: service_healthy }
+      tenants: { condition: service_healthy }
+      notifications: { condition: service_healthy }
+    ports:
+      - "5000:8080"   # ÚNICA porta de aplicação exposta ao host
+    healthcheck: *app-healthcheck
+    restart: unless-stopped
+    networks: [helpdesk]
+
+networks:
+  helpdesk:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
 
 volumes:
   helpdesk-pgdata:

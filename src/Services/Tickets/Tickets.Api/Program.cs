@@ -57,10 +57,12 @@ app.UseExceptionHandler(handler => handler.Run(async context =>
 }));
 
 if (app.Environment.IsDevelopment())
-{
     app.MapOpenApi();
 
-    // Aplica as migrations ao subir (apenas em desenvolvimento).
+// Migrations ao iniciar: sempre em desenvolvimento; em contêiner/produção, só se "Database:MigrateOnStartup" = true.
+// (Com várias instâncias, prefira rodar as migrations como um passo separado do deploy.)
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
+{
     using var scope = app.Services.CreateScope();
     await scope.ServiceProvider.GetRequiredService<TicketsDbContext>().Database.MigrateAsync();
 }

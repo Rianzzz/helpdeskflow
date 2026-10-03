@@ -32,7 +32,16 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 // em X-Forwarded-For, e aqui o aceitamos SOMENTE de proxies confiáveis (por padrão, apenas loopback;
 // em produção configure KnownProxies/KnownNetworks). Sem isso, o rate limit por IP contaria todo mundo junto.
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
-    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto);
+{
+    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+    // Em contêineres o gateway não é "loopback": informe a rede privada dele (CIDR) em ForwardedHeaders:KnownNetworks.
+    foreach (var cidr in builder.Configuration.GetSection("ForwardedHeaders:KnownNetworks").Get<string[]>() ?? [])
+    {
+        var parts = cidr.Split('/');
+        o.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(System.Net.IPAddress.Parse(parts[0]), int.Parse(parts[1])));
+    }
+});
 
 // Rate limiting: limita tentativas por IP nas rotas de autenticação (freia força bruta e abuso de cadastro).
 builder.Services.AddRateLimiter(o =>
@@ -76,8 +85,12 @@ app.UseExceptionHandler(handler => handler.Run(async context =>
 }));
 
 if (app.Environment.IsDevelopment())
-{
     app.MapOpenApi();
+
+// Migrations ao iniciar: sempre em desenvolvimento; em contêiner/produção, só se "Database:MigrateOnStartup" = true.
+// (Com várias instâncias, prefira rodar as migrations como um passo separado do deploy.)
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
+{
     using var scope = app.Services.CreateScope();
     await scope.ServiceProvider.GetRequiredService<IdentityDbContext>().Database.MigrateAsync();
 }

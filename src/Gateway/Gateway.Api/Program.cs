@@ -73,7 +73,8 @@ builder.Services.AddReverseProxy().LoadFromConfig(builder.Configuration.GetSecti
 var app = builder.Build();
 app.UseHelpDeskObservability(); // correlation id + log de requisições
 
-if (!app.Environment.IsDevelopment())
+// Em produção o TLS normalmente termina no proxy/ingress NA FRENTE do gateway; nesse caso defina "Https:Redirect" = false.
+if (!app.Environment.IsDevelopment() && app.Configuration.GetValue("Https:Redirect", true))
 {
     app.UseHsts();
     app.UseHttpsRedirection();
