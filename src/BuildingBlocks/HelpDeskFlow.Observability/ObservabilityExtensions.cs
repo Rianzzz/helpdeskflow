@@ -63,8 +63,23 @@ public static class ObservabilityExtensions
         builder.Services.AddOpenTelemetry()
             .ConfigureResource(r => r.AddService(serviceName))
             .WithTracing(t => t
-                .AddAspNetCoreInstrumentation(o => o.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/health"))
-                .AddHttpClientInstrumentation()
+                .AddAspNetCoreInstrumentation(o =>
+                {
+                    o.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/health");
+                    // O SignalR manda o JWT em "?access_token=...": não pode ir parar no sistema de traces.
+                    o.EnrichWithHttpRequest = (activity, request) =>
+                    {
+                        if (request.QueryString.HasValue)
+                            activity.SetTag("url.query", UrlRedaction.RedactSensitiveQuery(request.QueryString.Value!));
+                    };
+                })
+                .AddHttpClientInstrumentation(o =>
+                    // O gateway repassa a query string ao serviço: mesma proteção nas chamadas de saída.
+                    o.EnrichWithHttpRequestMessage = (activity, request) =>
+                    {
+                        if (request.RequestUri is { Query.Length: > 0 } uri)
+                            activity.SetTag("url.full", UrlRedaction.RedactSensitiveQuery(uri.ToString()));
+                    })
                 .AddNpgsql()
                 .AddSource(ActivitySourceName)
                 .AddSource("RabbitMQ.Client.Publisher", "RabbitMQ.Client.Subscriber"))
@@ -125,6 +140,17 @@ public static class ObservabilityExtensions
             checks = report.Entries.ToDictionary(e => e.Key, e => e.Value.Status.ToString())
         }));
     }
+}
+
+/// <summary>Remove segredos que viajam na URL (hoje: o JWT do SignalR em "access_token") antes de gravar logs e traces.</summary>
+public static partial class UrlRedaction
+{
+    public const string Placeholder = "[REDACTED]";
+
+    [System.Text.RegularExpressions.GeneratedRegex("(access_token=)[^&#]*", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex AccessToken();
+
+    public static string RedactSensitiveQuery(string urlOrQuery) => AccessToken().Replace(urlOrQuery, "$1" + Placeholder);
 }
 
 /// <summary>

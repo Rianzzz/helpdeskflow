@@ -37,6 +37,23 @@ public class EventFlowTests(StackFixture stack)
     }
 
     [Fact]
+    public async Task The_very_first_ticket_right_after_signup_still_notifies_the_admin()
+    {
+        // Regressão: o TicketCreated podia chegar ao Notifications ANTES de ele conhecer o administrador (o
+        // UserRegistered vem por outra fila). O aviso era descartado em silêncio. Repetimos algumas empresas para
+        // dar chance à corrida de acontecer.
+        for (var i = 0; i < 4; i++)
+        {
+            var company = await stack.CreateCompanyAsync($"Corrida{i}");
+            var title = StackFixture.Unique("Primeiro");
+
+            await stack.CreateTicketAsync(company.Admin, title); // imediatamente, sem esperar nada
+
+            await WaitForSubjectAsync(company.Admin, $"Novo chamado: {title}");
+        }
+    }
+
+    [Fact]
     public async Task Assigning_and_resolving_notify_the_right_people()
     {
         var company = await stack.CreateCompanyAsync();

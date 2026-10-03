@@ -1,7 +1,9 @@
 using HelpDeskFlow.Contracts;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Notifications.Api.Data;
 using Notifications.Api.Domain;
+using Notifications.Api.Hubs;
 using Npgsql;
 
 namespace Notifications.Api.Messaging;
@@ -10,7 +12,10 @@ namespace Notifications.Api.Messaging;
 /// Grava notificações de forma IDEMPOTENTE: o registro "este evento já foi tratado por este handler" e as
 /// notificações são salvos na MESMA transação. Se o RabbitMQ entregar o evento duas vezes, a segunda é ignorada.
 /// </summary>
-public class NotificationWriter(NotificationsDbContext db, ILogger<NotificationWriter> logger)
+public class NotificationWriter(
+    NotificationsDbContext db,
+    IHubContext<NotificationsHub, INotificationsClient> hub,
+    ILogger<NotificationWriter> logger)
 {
     public async Task<bool> TryWriteAsync(Guid eventId, string handler, IReadOnlyList<Notification> notifications, CancellationToken ct)
     {
@@ -35,9 +40,30 @@ public class NotificationWriter(NotificationsDbContext db, ILogger<NotificationW
         }
 
         foreach (var n in notifications)
+        {
             logger.LogInformation("[E-MAIL SIMULADO] para {Email} | {Subject}", n.RecipientEmail, n.Subject);
+            await PushAsync(n);
+        }
 
         return true;
+    }
+
+    /// <summary>
+    /// Empurra a notificação para o navegador de quem a recebe, em tempo real. Acontece DEPOIS de gravar: o dado já está
+    /// seguro, então uma falha aqui (ninguém conectado, hub indisponível) não pode derrubar o tratamento do evento. Quem
+    /// não estava conectado vê a notificação na próxima consulta; o tempo real é um acelerador, não a fonte da verdade.
+    /// </summary>
+    private async Task PushAsync(Notification n)
+    {
+        try
+        {
+            await hub.Clients.Group(NotificationsHub.GroupFor(n.TenantId, n.RecipientUserId))
+                .NotificationReceived(NotificationDto.From(n));
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Não foi possível empurrar a notificação {NotificationId} em tempo real.", n.Id);
+        }
     }
 }
 
@@ -63,6 +89,13 @@ public class TicketCreatedHandler(NotificationsDbContext db, NotificationWriter 
         var staff = await db.KnownUsers.AsNoTracking()
             .Where(u => u.TenantId == e.TenantId && (u.Role == "Admin" || u.Role == "Agent"))
             .ToListAsync(ct);
+
+        // Toda empresa tem pelo menos um Admin. Se não conhecemos NENHUM membro da equipe, não é "empresa sem equipe":
+        // é o UserRegistered que ainda não chegou (filas diferentes não têm ordem entre si; acontece quando o primeiro
+        // chamado é aberto logo após o cadastro). Lançar faz o consumidor tentar de novo, em vez de gravar "zero
+        // notificações" e marcar o evento como tratado, o que perderia o aviso para sempre.
+        if (staff.Count == 0)
+            throw new InvalidOperationException($"Equipe da empresa {e.TenantId} ainda não replicada (evento {e.EventId}).");
 
         var notifications = staff
             .Select(u => Notification.Create(e.TenantId, u,
@@ -135,6 +168,10 @@ public class TicketSlaBreachedHandler(NotificationsDbContext db, NotificationWri
         var admins = await db.KnownUsers.AsNoTracking()
             .Where(u => u.TenantId == e.TenantId && u.Role == "Admin")
             .ToListAsync(ct);
+
+        // Mesmo raciocínio do TicketCreated: toda empresa tem um Admin; nenhum conhecido = replicação atrasada, tentar de novo.
+        if (admins.Count == 0)
+            throw new InvalidOperationException($"Administradores da empresa {e.TenantId} ainda não replicados (evento {e.EventId}).");
 
         var notifications = admins
             .Select(u => Notification.Create(e.TenantId, u,

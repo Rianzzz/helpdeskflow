@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\src\Services\Tickets\Tickets.Application\Tickets.Application.csproj" />
     <ProjectReference Include="..\..\src\BuildingBlocks\HelpDeskFlow.Contracts\HelpDeskFlow.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Services\Tenants\Tenants.Api\Tenants.Api.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\HelpDeskFlow.Observability\HelpDeskFlow.Observability.csproj" />
   </ItemGroup>
 
 </Project>

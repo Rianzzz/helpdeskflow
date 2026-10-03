@@ -32,6 +32,7 @@ export class ApiError extends Error {
 }
 
 let accessToken: string | null = null
+let accessTokenExpiresAt = 0 // instante (ms) em que o access token vence
 let refreshing: Promise<AuthResponse | null> | null = null
 let onSessionChange: ((user: User | null) => void) | null = null
 
@@ -45,12 +46,14 @@ export function subscribeToSession(listener: (user: User | null) => void) {
 
 export function storeSession(auth: AuthResponse) {
   accessToken = auth.accessToken
+  accessTokenExpiresAt = Date.now() + auth.expiresInSeconds * 1000
   sessionStorage.setItem(REFRESH_KEY, auth.refreshToken)
   onSessionChange?.(auth.user)
 }
 
 export function clearSession() {
   accessToken = null
+  accessTokenExpiresAt = 0
   sessionStorage.removeItem(REFRESH_KEY)
   onSessionChange?.(null)
 }
@@ -61,6 +64,17 @@ export function hasStoredRefreshToken() {
 
 export function getAccessToken() {
   return accessToken
+}
+
+/**
+ * Access token SEMPRE válido, para quem não pode esperar um 401 para renovar: a conexão em tempo real (SignalR) só
+ * autentica na hora de conectar. Se faltar menos de 30 s para vencer, renova antes (pela mesma renovação single-flight).
+ * Devolve "" se não há sessão (o servidor responde 401 e a conexão não se estabelece).
+ */
+export async function getValidAccessToken(): Promise<string> {
+  if (accessToken && Date.now() < accessTokenExpiresAt - 30_000) return accessToken
+  if (hasStoredRefreshToken()) await refreshSession()
+  return accessToken ?? ''
 }
 
 /** Troca o refresh token por um novo par de tokens. Chamadas simultâneas compartilham a mesma promessa. */
@@ -149,6 +163,7 @@ export async function api<T = void>(path: string, options: RequestOptions = {}):
 /** Útil nos testes: volta o módulo ao estado inicial. */
 export function resetApiStateForTests() {
   accessToken = null
+  accessTokenExpiresAt = 0
   refreshing = null
   onSessionChange = null
 }

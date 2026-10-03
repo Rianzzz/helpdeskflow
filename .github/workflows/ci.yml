@@ -142,6 +142,8 @@ jobs:
         working-directory: web
         env:
           E2E_BASE_URL: http://localhost:3000
+          # Permite o teste que reinicia o serviço de notificações (docker compose restart) e verifica a reconexão.
+          E2E_CAN_RESTART_SERVICES: "1"
         run: npm run e2e
 
       - name: Guardar relatório do Playwright (screenshots e traces das falhas)

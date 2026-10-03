@@ -4,8 +4,10 @@ using HelpDeskFlow.Auth;
 using HelpDeskFlow.Contracts;
 using HelpDeskFlow.Messaging.RabbitMq;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Notifications.Api.Data;
+using Notifications.Api.Hubs;
 using Notifications.Api.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,6 +25,15 @@ builder.Services.AddHelpDeskAuthentication(builder.Configuration);
 builder.Services.AddDbContext<NotificationsDbContext>(o =>
     o.UseNpgsql(builder.Configuration.GetConnectionString("NotificationsDb")).UseSnakeCaseNamingConvention());
 builder.Services.AddScoped<NotificationWriter>();
+
+// Tempo real: o servidor EMPURRA as notificações para o navegador (WebSocket, com fallback automático).
+builder.Services.AddSignalR(o =>
+{
+    o.MaximumReceiveMessageSize = 4 * 1024;                  // o cliente quase não envia nada: limite pequeno
+    o.KeepAliveInterval = TimeSpan.FromSeconds(15);          // "ping" que mantém a conexão viva atrás de proxies
+    o.ClientTimeoutInterval = TimeSpan.FromSeconds(45);
+    o.EnableDetailedErrors = false;                          // nunca vazar detalhes internos para o cliente
+});
 
 // Este serviço é "reativo": quase tudo o que faz é consumir eventos de outros serviços.
 builder.Services.AddRabbitMessaging(builder.Configuration, serviceName: "notifications");
@@ -71,11 +82,13 @@ api.MapGet("/", async (bool? unread, ClaimsPrincipal user, NotificationsDbContex
     if (unread == true) query = query.Where(n => n.ReadAt == null);
 
     return await query.OrderByDescending(n => n.CreatedAt).Take(50)
-        .Select(n => new { n.Id, n.Subject, n.Body, n.CreatedAt, n.ReadAt })
+        .Select(n => new NotificationDto(n.Id, n.Subject, n.Body, n.CreatedAt, n.ReadAt))
         .ToListAsync(ct);
 });
 
-api.MapPut("/{id:guid}/read", async (Guid id, ClaimsPrincipal user, NotificationsDbContext db, CancellationToken ct) =>
+api.MapPut("/{id:guid}/read", async (
+    Guid id, ClaimsPrincipal user, NotificationsDbContext db,
+    IHubContext<NotificationsHub, INotificationsClient> hub, CancellationToken ct) =>
 {
     var (tenantId, userId) = (user.TenantId(), user.UserId());
     var notification = await db.Notifications
@@ -84,8 +97,16 @@ api.MapPut("/{id:guid}/read", async (Guid id, ClaimsPrincipal user, Notification
 
     notification.MarkAsRead();
     await db.SaveChangesAsync(ct);
+
+    // Avisa as OUTRAS abas/dispositivos da mesma pessoa, para o contador do menu acompanhar em tempo real.
+    await hub.Clients.Group(NotificationsHub.GroupFor(tenantId, userId)).NotificationRead(id);
     return Results.NoContent();
 });
+
+// Hub de tempo real. CloseOnAuthenticationExpiration: quando o JWT expira, o servidor ENCERRA a conexão (sem isso, uma
+// conexão aberta continuaria recebendo dados para sempre com um token já vencido). O cliente reconecta com um token novo.
+app.MapHub<NotificationsHub>("/hubs/notifications", o => o.CloseOnAuthenticationExpiration = true)
+    .RequireAuthorization();
 
 app.MapHelpDeskHealth();
 

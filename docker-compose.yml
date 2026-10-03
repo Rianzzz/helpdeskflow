@@ -158,6 +158,7 @@ services:
       ReverseProxy__Clusters__tickets__Destinations__tickets-1__Address: http://tickets:8080/
       ReverseProxy__Clusters__tenants__Destinations__tenants-1__Address: http://tenants:8080/
       ReverseProxy__Clusters__notifications__Destinations__notifications-1__Address: http://notifications:8080/
+      ReverseProxy__Clusters__notifications-hub__Destinations__notifications-hub-1__Address: http://notifications:8080/
     depends_on:
       identity: { condition: service_healthy }
       tickets: { condition: service_healthy }

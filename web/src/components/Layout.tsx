@@ -3,6 +3,8 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { roleLabel } from '../lib/format'
 import { useUnreadCount } from '../lib/queries'
+import { useRealtimeStatus, type RealtimeStatus } from '../lib/realtime'
+import { useRealtimeNotifications } from '../lib/useRealtimeNotifications'
 import type { Role } from '../lib/types'
 import { Badge } from './ui'
 
@@ -27,10 +29,29 @@ const icons = {
   building: icon('M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Z'),
 }
 
+/** Mostra, sem alarde, se as notificações estão chegando ao vivo ou se estamos no modo de reserva (consulta periódica). */
+function LiveIndicator({ status }: { status: RealtimeStatus }) {
+  const view = {
+    connected: { dot: 'bg-emerald-500', label: 'Ao vivo' },
+    connecting: { dot: 'bg-amber-500', label: 'Conectando…' },
+    reconnecting: { dot: 'bg-amber-500', label: 'Reconectando…' },
+    offline: { dot: 'bg-slate-400', label: 'Atualizando a cada 15 s' },
+  }[status]
+
+  return (
+    <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-600" data-testid="live-indicator" data-status={status}>
+      <span aria-hidden="true" className={`h-2 w-2 rounded-full ${view.dot}`} />
+      {view.label}
+    </p>
+  )
+}
+
 export function Layout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const unread = useUnreadCount()
+  const live = useRealtimeStatus()
+  useRealtimeNotifications() // abre a conexão em tempo real enquanto a pessoa está logada
   const [menuOpen, setMenuOpen] = useState(false)
 
   const items: NavItem[] = [
@@ -75,6 +96,7 @@ export function Layout() {
     <div className="border-t border-slate-200 p-4">
       <p className="truncate text-sm font-medium text-slate-900">{user?.name}</p>
       <p className="truncate text-xs text-slate-500">{user?.email}</p>
+      <LiveIndicator status={live} />
       <div className="mt-2 flex items-center justify-between">
         {user && <Badge tone="brand">{roleLabel[user.role]}</Badge>}
         <button onClick={handleLogout} className="text-sm font-medium text-slate-600 hover:text-slate-900">

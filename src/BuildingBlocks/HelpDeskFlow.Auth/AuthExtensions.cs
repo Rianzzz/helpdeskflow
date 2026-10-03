@@ -8,6 +8,9 @@ namespace HelpDeskFlow.Auth;
 
 public static class AuthExtensions
 {
+    /// <summary>Prefixo das rotas de tempo real (SignalR), as únicas que aceitam o token na query string.</summary>
+    public const string RealtimePathPrefix = "/hubs";
+
     /// <summary>
     /// Configura a validação de JWT. Todo serviço que recebe requisições autenticadas chama isso,
     /// então a regra de validação fica em um único lugar.
@@ -44,6 +47,20 @@ public static class AuthExtensions
                     ClockSkew = TimeSpan.FromSeconds(30),
                     NameClaimType = AppClaims.Subject,
                     RoleClaimType = AppClaims.Role
+                };
+
+                // WebSockets de navegador não conseguem enviar o cabeçalho Authorization, então o cliente do SignalR
+                // manda o token na query string ("?access_token=..."). Aceitamos isso SÓ nas rotas /hubs: em qualquer
+                // outra rota, um token na URL (que vaza em logs, histórico e cabeçalho Referer) seria ignorado.
+                o.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var token = context.Request.Query["access_token"];
+                        if (!string.IsNullOrEmpty(token) && context.HttpContext.Request.Path.StartsWithSegments(RealtimePathPrefix))
+                            context.Token = token;
+                        return Task.CompletedTask;
+                    }
                 };
             });
 

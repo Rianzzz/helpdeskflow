@@ -11,7 +11,10 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
-    proxy: { '/api': { target: GATEWAY, changeOrigin: true } },
+    proxy: {
+      '/api': { target: GATEWAY, changeOrigin: true },
+      '/hubs': { target: GATEWAY, changeOrigin: true, ws: true }, // tempo real (SignalR/WebSocket)
+    },
   },
   test: {
     environment: 'jsdom',

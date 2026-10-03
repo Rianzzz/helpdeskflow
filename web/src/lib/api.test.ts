@@ -1,6 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { jsonResponse, makeAuth } from '../test/helpers'
-import { ApiError, api, clearSession, getAccessToken, hasStoredRefreshToken, resetApiStateForTests, storeSession, subscribeToSession } from './api'
+import {
+  ApiError,
+  api,
+  clearSession,
+  getAccessToken,
+  getValidAccessToken,
+  hasStoredRefreshToken,
+  resetApiStateForTests,
+  storeSession,
+  subscribeToSession,
+} from './api'
 
 const fetchMock = vi.fn<typeof fetch>()
 
@@ -86,6 +96,43 @@ describe('api()', () => {
     fetchMock.mockResolvedValueOnce(new Response('<html>502</html>', { status: 502 }))
 
     await expect(api('/api/tickets')).rejects.toMatchObject({ status: 502, title: 'Erro no servidor', detail: null })
+  })
+})
+
+describe('getValidAccessToken (usado pela conexão em tempo real)', () => {
+  it('devolve o token atual enquanto ele ainda tem folga de validade', async () => {
+    storeSession(makeAuth('Admin', { expiresInSeconds: 900 }))
+
+    await expect(getValidAccessToken()).resolves.toBe('access-1')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('renova ANTES de vencer (faltando menos de 30 s), em vez de entregar um token que o servidor recusaria', async () => {
+    storeSession(makeAuth('Admin', { expiresInSeconds: 20 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(makeAuth('Admin', { accessToken: 'access-2', refreshToken: 'refresh-2' })))
+
+    await expect(getValidAccessToken()).resolves.toBe('access-2')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('várias conexões pedindo token ao mesmo tempo compartilham UMA renovação', async () => {
+    storeSession(makeAuth('Admin', { expiresInSeconds: 5 }))
+    let refreshes = 0
+    fetchMock.mockImplementation(async () => {
+      refreshes++
+      await new Promise((r) => setTimeout(r, 10))
+      return jsonResponse(makeAuth('Admin', { accessToken: 'access-2', refreshToken: 'refresh-2' }))
+    })
+
+    const tokens = await Promise.all([getValidAccessToken(), getValidAccessToken(), getValidAccessToken()])
+
+    expect(tokens).toEqual(['access-2', 'access-2', 'access-2'])
+    expect(refreshes).toBe(1)
+  })
+
+  it('sem sessão devolve texto vazio e não chama o servidor', async () => {
+    await expect(getValidAccessToken()).resolves.toBe('')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 

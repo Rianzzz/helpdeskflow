@@ -32,6 +32,9 @@ public sealed class StackFixture : IAsyncLifetime
     public HttpClient Notifications { get; private set; } = null!;
 
     public IServiceProvider NotificationsServices => _notifications.Services;
+
+    /// <summary>O servidor de teste do Notifications: permite conectar um cliente SignalR (WebSocket) a ele, em memória.</summary>
+    public Microsoft.AspNetCore.TestHost.TestServer NotificationsServer => _notifications.Server;
     public string RabbitHost => _rabbit.Hostname;
     public int RabbitPort => _rabbit.GetMappedPublicPort(5672);
 

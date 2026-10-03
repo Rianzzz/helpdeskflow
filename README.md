@@ -118,6 +118,30 @@ Tickets ──TicketCreated/Assigned/Resolved──► Notifications (grava a no
 > MassTransit foi evitado de propósito: a v9 passou a ser comercial. Usamos `RabbitMQ.Client` direto,
 > o que também ajuda a entender o que acontece por baixo.
 
+### Notificações em tempo real (SignalR)
+
+O Notifications hospeda um hub (`/hubs/notifications`): assim que uma notificação é gravada, o servidor a **empurra** para o
+navegador de quem a recebe (WebSocket, com fallback automático para SSE/long polling). O navegador chega ao hub por
+nginx → gateway (YARP, com cluster próprio e prazo de inatividade maior) → Notifications.
+
+```
+evento (RabbitMQ) → handler grava a notificação → empurra ao grupo "user:{tenant}:{usuário}" → contador, lista e aviso na tela
+```
+
+- **Acelerador, não fonte da verdade**: a lista continua vindo da API REST. Ao (re)conectar, as listas são recarregadas; sem
+  conexão, a tela volta a consultar a API a cada 15 s (o indicador do menu mostra "Ao vivo" ou o modo de reserva). Falha ao
+  empurrar nunca derruba o tratamento do evento (o dado já está gravado)
+- **Autenticação**: WebSocket de navegador não envia `Authorization`, então o JWT vai em `?access_token=`. Por isso: só é
+  aceito nas rotas `/hubs` (em qualquer outra é ignorado); é **redigido** nos logs do nginx (`[REDACTED]`, em todas as rotas),
+  nos traces do OpenTelemetry e nunca aparece nos logs do gateway e dos serviços; e o servidor **encerra a conexão quando o
+  token expira** (`CloseOnAuthenticationExpiration`), com o cliente reconectando já com um token novo
+- **Autorização**: o grupo de cada conexão é montado só com as claims do token (ninguém entra no grupo de outra pessoa) e o hub
+  não expõe nenhum método chamável pelo cliente; também empurra "lida em outra aba" para o contador acompanhar
+- **Limite conhecido**: com várias instâncias do Notifications, falta um *backplane* (ex.: Redis), porque o evento é consumido
+  por uma instância que pode não ser a que tem a conexão do usuário
+- Corrigido junto: se o primeiro chamado fosse aberto logo após o cadastro, o aviso podia se perder (o `TicketCreated`
+  chegava antes de o Notifications conhecer o admin). Agora o handler tenta de novo em vez de descartar
+
 ### SLA (job agendado)
 
 Um job em segundo plano (`SlaMonitor`) verifica, a cada minuto, chamados **abertos e sem responsável** além do prazo da
@@ -195,9 +219,10 @@ Cada teste cria a própria empresa (nomes aleatórios), então podem rodar em pa
 
 React 19 + TypeScript + Vite, Tailwind CSS, React Router e TanStack Query. Telas: cadastro de empresa (com o acompanhamento
 da **saga** em tempo quase real), login, chamados (filtros, busca, criação, detalhe com ações por papel), notificações
-(com contador no menu), usuários (Admin) e dados da empresa. Responsivo e acessível (rótulos, foco, `<dialog>`, `aria-live`).
+(com contador no menu, **ao vivo** via SignalR), usuários (Admin) e dados da empresa. Responsivo e acessível (rótulos, foco,
+`<dialog>`, `aria-live`).
 
-- **Mesma origem**: o navegador só fala com `/api` (Vite em dev, nginx em produção): sem CORS e sem URL de API no código
+- **Mesma origem**: o navegador só fala com `/api` e `/hubs` (Vite em dev, nginx em produção): sem CORS e sem URL de API no código
 - **Tokens**: o access token (15 min) fica **só em memória**; o refresh token no `sessionStorage` (por aba). A renovação é
   *single-flight*: várias requisições com 401 compartilham UMA renovação, senão a detecção de reuso do servidor derrubaria a sessão.
   Próximo passo de endurecimento: cookie `httpOnly` via BFF

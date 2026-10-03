@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
+import { useRealtimeStatus, type RealtimeStatus } from './realtime'
 import type { AppNotification, NewTicket, NewUser, StaffMember, TenantProfile, Ticket, User } from './types'
 
 // Chaves de cache centralizadas: quem altera dados invalida a chave certa.
@@ -14,8 +15,8 @@ export const keys = {
 }
 
 /**
- * A lista se atualiza sozinha a cada 15 s (pausa em aba escondida): quem fica com a tela aberta vê os chamados novos
- * sem precisar recarregar. Tempo real "de verdade" seria com SignalR; consulta periódica é simples e suficiente aqui.
+ * A lista se atualiza sozinha a cada 15 s (pausa em aba escondida) e também na hora em que chega uma notificação em
+ * tempo real. A consulta periódica fica porque nem toda mudança num chamado gera notificação (ex.: fechar, reabrir).
  */
 export const useTickets = () =>
   useQuery({ queryKey: keys.tickets, queryFn: () => api<Ticket[]>('/api/tickets'), refetchInterval: 15_000 })
@@ -50,17 +51,32 @@ export function useTicketAction(id: string) {
   })
 }
 
-export const useNotifications = () =>
-  useQuery({ queryKey: keys.notifications, queryFn: () => api<AppNotification[]>('/api/notifications') })
+/**
+ * Com a conexão em tempo real ATIVA, o servidor empurra as notificações e não precisamos perguntar nada. Sem ela
+ * (offline, proxy bloqueando, reconectando), voltamos a consultar a API a cada 15 s: o tempo real é um acelerador,
+ * nunca a única forma de receber um aviso.
+ */
+const pollingWhenNotLive = (status: RealtimeStatus) => (status === 'connected' ? false : 15_000)
 
-/** Contador do sino: consulta só as não lidas, a cada 15 s (simples e suficiente; tempo real seria com SignalR). */
-export const useUnreadCount = () =>
-  useQuery({
+export function useNotifications() {
+  const status = useRealtimeStatus()
+  return useQuery({
+    queryKey: keys.notifications,
+    queryFn: () => api<AppNotification[]>('/api/notifications'),
+    refetchInterval: pollingWhenNotLive(status),
+  })
+}
+
+/** Contador do menu: as não lidas. Ao vivo pelo SignalR; consulta periódica só como reserva. */
+export function useUnreadCount() {
+  const status = useRealtimeStatus()
+  return useQuery({
     queryKey: keys.unread,
     queryFn: () => api<AppNotification[]>('/api/notifications?unread=true'),
-    refetchInterval: 15_000,
+    refetchInterval: pollingWhenNotLive(status),
     select: (list) => list.length,
   })
+}
 
 export function useMarkRead() {
   const qc = useQueryClient()

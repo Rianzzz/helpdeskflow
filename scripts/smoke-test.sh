@@ -92,6 +92,22 @@ if [ -n "$WEB" ]; then
   VIA_WEB_TOKEN=$(curl -fsS -X POST "$WEB/api/auth/login" -H "$JSON" \
     -d "{\"email\":\"admin$SUFFIX@smoke.test\",\"password\":\"$PASSWORD\"}" | field accessToken)
   [ -n "$VIA_WEB_TOKEN" ] || fail "login pela origem do front falhou"
+
+  step "Tempo real (SignalR): a negociação passa pelo nginx e pelo gateway; sem token é recusada"
+  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$WEB/hubs/notifications/negotiate?negotiateVersion=1&access_token=$VIA_WEB_TOKEN")
+  [ "$code" = 200 ] || fail "negociação do hub com token deveria dar 200, veio $code"
+  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$WEB/hubs/notifications/negotiate?negotiateVersion=1")
+  [ "$code" = 401 ] || fail "negociação do hub SEM token deveria dar 401, veio $code"
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$WEB/api/tickets?access_token=$VIA_WEB_TOKEN")
+  [ "$code" = 401 ] || fail "token na query só pode valer nas rotas /hubs (em /api deveria dar 401, veio $code)"
+
+  # O token viaja na URL (limitação dos WebSockets de navegador): garantimos que NUNCA é gravado nos logs.
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    step "Tempo real: o token da URL não aparece nos logs do nginx, do gateway nem do Notifications"
+    if (cd "$(dirname "$0")/.." && docker compose --profile apps logs --no-color web gateway notifications 2>/dev/null | grep -qF "$VIA_WEB_TOKEN"); then
+      fail "o JWT apareceu em logs de contêiner"
+    fi
+  fi
 fi
 
 printf '\n✓ Smoke test passou: saga de onboarding, autenticação, isolamento, eventos e notificações funcionando.\n'
