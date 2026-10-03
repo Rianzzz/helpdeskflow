@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Princípio do menor privilégio: o pipeline só precisa LER o repositório.
+permissions:
+  contents: read
+
+# Um push novo cancela a execução anterior da mesma branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-and-test:
+    name: Build e testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restaurar
+        run: dotnet restore HelpDeskFlow.sln
+
+      - name: Compilar (avisos não passam em branco, mas não quebram)
+        run: dotnet build HelpDeskFlow.sln --no-restore -c Release
+
+      - name: Testes unitários
+        run: dotnet test tests/HelpDeskFlow.UnitTests --no-build -c Release --logger "trx;LogFileName=unit.trx"
+
+      # Os testes de integração sobem PostgreSQL e RabbitMQ reais com Testcontainers (o runner já tem Docker).
+      - name: Testes de integração
+        run: dotnet test tests/HelpDeskFlow.IntegrationTests --no-build -c Release --logger "trx;LogFileName=integration.trx"
+
+      - name: Guardar resultados dos testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: "**/TestResults/*.trx"
+          if-no-files-found: ignore
+
+  dependency-audit:
+    name: Pacotes vulneráveis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Procurar pacotes NuGet com vulnerabilidades conhecidas (diretos e transitivos)
+        run: |
+          dotnet restore HelpDeskFlow.sln
+          dotnet list HelpDeskFlow.sln package --vulnerable --include-transitive 2>&1 | tee audit.txt
+          if grep -q "has the following vulnerable packages" audit.txt; then
+            echo "::error::Há pacotes vulneráveis. Veja o relatório acima."
+            exit 1
+          fi
+
+  docker-e2e:
+    name: Imagens Docker + teste de fumaça
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar segredos efêmeros (valem só nesta execução)
+        run: echo "JWT_SIGNING_KEY=$(openssl rand -base64 48)" > .env
+
+      - name: Construir imagens e subir a plataforma completa
+        run: docker compose --profile apps up -d --build --wait --wait-timeout 300
+
+      - name: Teste de fumaça pelo gateway
+        run: ./scripts/smoke-test.sh http://localhost:5000
+
+      - name: Logs dos contêineres (se algo falhou)
+        if: failure()
+        run: docker compose --profile apps logs --no-color --tail=200
+
+      - name: Derrubar
+        if: always()
+        run: docker compose --profile apps down -v

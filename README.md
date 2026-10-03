@@ -156,6 +156,17 @@ dotnet test tests/HelpDeskFlow.IntegrationTests   # precisa do Docker: sobe Post
 Os testes de integração exercitam a plataforma de verdade (saga de onboarding, isolamento entre empresas e papéis, JWT
 adulterado/forjado, bloqueio de conta, reuso de refresh token, idempotência, DLQ, job de SLA).
 
+### CI/CD (GitHub Actions)
+
+`.github/workflows/ci.yml` roda a cada push e pull request, com permissão mínima (`contents: read`):
+
+1. **Build e testes**: compila em Release, roda os testes unitários e os de integração (Testcontainers; o runner já tem Docker)
+2. **Pacotes vulneráveis**: `dotnet list package --vulnerable --include-transitive` e falha se achar algum
+3. **Imagens Docker + teste de fumaça**: constrói as 5 imagens, sobe a plataforma completa com `docker compose --profile apps`
+   (segredos efêmeros gerados na hora) e roda `scripts/smoke-test.sh` pelo gateway (saga de onboarding, login, chamado, notificação)
+
+O mesmo teste de fumaça serve localmente: `./scripts/smoke-test.sh http://localhost:5000`.
+
 ### Gateway (borda)
 
 - Entrada única: os clientes só falam com o gateway; as rotas ficam em `Gateway.Api/appsettings.json`
@@ -176,4 +187,4 @@ adulterado/forjado, bloqueio de conta, reuso de refresh token, idempotência, DL
 - [x] Fase 3 — API Gateway (YARP): entrada única, validação de JWT, rate limiting por tenant
 - [x] Fase 4 — eventos com RabbitMQ (Identity → Tickets/Notifications), serviço Notifications, DLQ, idempotência
 - [x] Fase 5 — Outbox, SLA com job agendado, serviço Tenants e saga de onboarding com compensação e timeout
-- [ ] Fase 6 — observabilidade (Serilog, OpenTelemetry), testes, CI/CD
+- [x] Fase 6 — testes (unitários + integração com Testcontainers), observabilidade (Serilog, OpenTelemetry, health), Docker e CI/CD
