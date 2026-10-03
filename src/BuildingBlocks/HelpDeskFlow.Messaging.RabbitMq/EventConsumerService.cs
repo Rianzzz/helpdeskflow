@@ -20,7 +20,9 @@ public sealed class EventConsumerService<TEvent>(
     ILogger<EventConsumerService<TEvent>> logger) : BackgroundService
     where TEvent : IIntegrationEvent
 {
-    private const int MaxAttempts = 3;
+    // Mais tentativas, com espera crescente (0,5 s, 1 s, 2 s, 4 s = ~7,5 s): cobre a "defasagem" normal entre
+    // eventos de serviços diferentes (consistência eventual) antes de desistir e mandar para a DLQ.
+    private const int MaxAttempts = 5;
     private readonly string _queue = $"{options.Value.ServiceName}.{TEvent.EventName}";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

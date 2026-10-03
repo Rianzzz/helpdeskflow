@@ -74,8 +74,7 @@ public class TicketCreatedHandler(NotificationsDbContext db, NotificationWriter 
 }
 
 /// <summary>Chamado atribuído: avisa o responsável e quem abriu o chamado.</summary>
-public class TicketAssignedHandler(NotificationsDbContext db, NotificationWriter writer, ILogger<TicketAssignedHandler> logger)
-    : IEventHandler<TicketAssigned>
+public class TicketAssignedHandler(NotificationsDbContext db, NotificationWriter writer) : IEventHandler<TicketAssigned>
 {
     public async Task HandleAsync(TicketAssigned e, CancellationToken ct)
     {
@@ -84,18 +83,22 @@ public class TicketAssignedHandler(NotificationsDbContext db, NotificationWriter
             .Where(u => u.TenantId == e.TenantId && ids.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, ct);
 
-        var notifications = new List<Notification>();
+        // Eventos de serviços diferentes não têm ordem garantida entre si: este evento pode chegar ANTES do
+        // UserRegistered de um dos usuários. Em vez de ignorar em silêncio (e perder a notificação para sempre),
+        // lançamos: o consumidor tenta de novo com espera crescente, e só depois disso o evento vai para a DLQ.
+        if (!users.TryGetValue(e.AssigneeId, out var assignee) || !users.TryGetValue(e.RequesterId, out var requester))
+            throw new InvalidOperationException($"Usuários do evento {e.EventId} ainda não replicados para este serviço.");
 
-        if (users.TryGetValue(e.AssigneeId, out var assignee))
-            notifications.Add(Notification.Create(e.TenantId, assignee,
-                $"Chamado atribuído a você: {e.Title}", $"O chamado \"{e.Title}\" agora é sua responsabilidade."));
-        else
-            logger.LogWarning("Responsável {UserId} ainda desconhecido; sem notificação para ele.", e.AssigneeId);
+        var notifications = new List<Notification>
+        {
+            Notification.Create(e.TenantId, assignee,
+                $"Chamado atribuído a você: {e.Title}", $"O chamado \"{e.Title}\" agora é sua responsabilidade.")
+        };
 
-        if (users.TryGetValue(e.RequesterId, out var requester) && e.RequesterId != e.AssigneeId)
+        if (e.RequesterId != e.AssigneeId)
             notifications.Add(Notification.Create(e.TenantId, requester,
                 $"Seu chamado está em atendimento: {e.Title}",
-                $"{assignee?.Name ?? "Um atendente"} assumiu o seu chamado \"{e.Title}\"."));
+                $"{assignee.Name} assumiu o seu chamado \"{e.Title}\"."));
 
         await writer.TryWriteAsync(e.EventId, nameof(TicketAssignedHandler), notifications, ct);
     }
