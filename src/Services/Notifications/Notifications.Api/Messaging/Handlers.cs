@@ -123,3 +123,22 @@ public class TicketResolvedHandler(NotificationsDbContext db, NotificationWriter
         await writer.TryWriteAsync(e.EventId, nameof(TicketResolvedHandler), notifications, ct);
     }
 }
+
+/// <summary>SLA estourado: escalona para os administradores da empresa.</summary>
+public class TicketSlaBreachedHandler(NotificationsDbContext db, NotificationWriter writer) : IEventHandler<TicketSlaBreached>
+{
+    public async Task HandleAsync(TicketSlaBreached e, CancellationToken ct)
+    {
+        var admins = await db.KnownUsers.AsNoTracking()
+            .Where(u => u.TenantId == e.TenantId && u.Role == "Admin")
+            .ToListAsync(ct);
+
+        var notifications = admins
+            .Select(u => Notification.Create(e.TenantId, u,
+                $"SLA estourado: {e.Title}",
+                $"O chamado \"{e.Title}\" (prioridade {e.Priority}) está há {e.MinutesWaiting} min sem responsável."))
+            .ToList();
+
+        await writer.TryWriteAsync(e.EventId, nameof(TicketSlaBreachedHandler), notifications, ct);
+    }
+}

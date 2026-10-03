@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Tickets.Application;
 using Tickets.Application.Abstractions;
+using Tickets.Infrastructure.Jobs;
 using Tickets.Infrastructure.Messaging;
 using Tickets.Infrastructure.Persistence;
 
@@ -22,6 +23,12 @@ public static class DependencyInjection
         services.AddScoped<ITicketRepository, TicketRepository>();
         services.AddScoped<IKnownUserRepository, KnownUserRepository>();
         services.AddScoped<TicketService>();
+
+        // SLA: prazos configuráveis ("Sla" no appsettings) + job em segundo plano.
+        services.AddSingleton(config.GetSection("Sla").Get<SlaPolicy>() ?? new SlaPolicy());
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<SlaService>();
+        services.AddHostedService<SlaMonitor>();
 
         // Eventos que o Tickets consome.
         services.AddEventHandler<UserRegistered, UserRegisteredHandler>();

@@ -11,10 +11,10 @@ public record AssignTicketRequest(Guid AssigneeId);
 
 public record TicketResponse(
     Guid Id, Guid RequesterId, string Title, string Description, TicketStatus Status,
-    TicketPriority Priority, Guid? AssigneeId, DateTime CreatedAt, DateTime? ClosedAt)
+    TicketPriority Priority, Guid? AssigneeId, DateTime CreatedAt, DateTime? ClosedAt, DateTime? SlaBreachedAt)
 {
     public static TicketResponse From(Ticket t) =>
-        new(t.Id, t.RequesterId, t.Title, t.Description, t.Status, t.Priority, t.AssigneeId, t.CreatedAt, t.ClosedAt);
+        new(t.Id, t.RequesterId, t.Title, t.Description, t.Status, t.Priority, t.AssigneeId, t.CreatedAt, t.ClosedAt, t.SlaBreachedAt);
 }
 
 public class TicketService(

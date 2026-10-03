@@ -28,4 +28,9 @@ public interface ITicketRepository
     Task<List<Ticket>> ListAsync(CancellationToken ct);
     Task AddAsync(Ticket ticket, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
+
+    // ---- Operações "do sistema" (jobs em segundo plano): enxergam TODAS as empresas, ignorando o filtro de tenant.
+    // Nunca devem ser expostas por endpoints HTTP.
+    Task<List<Ticket>> SystemListUnattendedAsync(DateTime createdBeforeUtc, int take, CancellationToken ct);
+    Task<Ticket?> SystemGetByIdAsync(Guid id, CancellationToken ct);
 }

@@ -19,6 +19,9 @@ public class Ticket
     public DateTime CreatedAt { get; private set; }
     public DateTime? ClosedAt { get; private set; }
 
+    /// <summary>Quando o prazo de primeiro atendimento (SLA) estourou. Nulo = ainda não estourou.</summary>
+    public DateTime? SlaBreachedAt { get; private set; }
+
     // Exigido pelo EF Core
     private Ticket() { }
 
@@ -71,6 +74,15 @@ public class Ticket
         Status = TicketStatus.Open;
         ClosedAt = null;
     }
+
+    /// <summary>
+    /// SLA de primeiro atendimento: um chamado que continua ABERTO e SEM RESPONSÁVEL além do prazo
+    /// da sua prioridade está "estourado". Só é considerado uma vez (SlaBreachedAt evita alertas repetidos).
+    /// </summary>
+    public bool IsSlaOverdue(DateTime nowUtc, TimeSpan limit) =>
+        Status == TicketStatus.Open && AssigneeId is null && SlaBreachedAt is null && nowUtc - CreatedAt >= limit;
+
+    public void MarkSlaBreached(DateTime nowUtc) => SlaBreachedAt = nowUtc;
 
     private void EnsureNotClosed()
     {

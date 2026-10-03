@@ -23,6 +23,7 @@ builder.Services.AddEventHandler<UserRegistered, UserRegisteredHandler>();
 builder.Services.AddEventHandler<TicketCreated, TicketCreatedHandler>();
 builder.Services.AddEventHandler<TicketAssigned, TicketAssignedHandler>();
 builder.Services.AddEventHandler<TicketResolved, TicketResolvedHandler>();
+builder.Services.AddEventHandler<TicketSlaBreached, TicketSlaBreachedHandler>();
 
 var app = builder.Build();
 
