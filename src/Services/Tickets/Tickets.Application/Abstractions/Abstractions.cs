@@ -12,6 +12,12 @@ public interface ICurrentUser
     bool IsCustomer { get; }
 }
 
+public interface IKnownUserRepository
+{
+    /// <summary>O usuário existe NESTA empresa e é da equipe de atendimento (Admin ou Agent)?</summary>
+    Task<bool> IsStaffOfTenantAsync(Guid tenantId, Guid userId, CancellationToken ct);
+}
+
 /// <summary>
 /// A camada Application define O QUE precisa ser persistido;
 /// a camada Infrastructure define COMO (EF Core + PostgreSQL).

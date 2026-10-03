@@ -18,5 +18,23 @@ services:
       timeout: 3s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: helpdesk-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: helpdesk
+      RABBITMQ_DEFAULT_PASS: helpdesk_dev
+    ports:
+      - "5672:5672"     # AMQP (os serviços usam esta)
+      - "15672:15672"   # painel de administração: http://localhost:15672
+    volumes:
+      - helpdesk-rabbitdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   helpdesk-pgdata:
+  helpdesk-rabbitdata:

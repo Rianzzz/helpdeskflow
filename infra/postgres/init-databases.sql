@@ -2,3 +2,4 @@
 -- (Roda só na primeira criação do volume. Em volume existente: docker exec helpdesk-postgres createdb -U helpdesk <nome>)
 CREATE DATABASE helpdesk_tickets;
 CREATE DATABASE helpdesk_identity;
+CREATE DATABASE helpdesk_notifications;

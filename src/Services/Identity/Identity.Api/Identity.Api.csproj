@@ -18,6 +18,7 @@
     <ProjectReference Include="..\Identity.Application\Identity.Application.csproj" />
     <ProjectReference Include="..\Identity.Infrastructure\Identity.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\HelpDeskFlow.Auth\HelpDeskFlow.Auth.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\HelpDeskFlow.Messaging.RabbitMq\HelpDeskFlow.Messaging.RabbitMq.csproj" />
   </ItemGroup>
 
 </Project>

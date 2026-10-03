@@ -9,13 +9,17 @@ SaaS multi-tenant de help desk (chamados de suporte), construído em microsservi
    docker compose up -d
    ```
    Se o volume do Postgres já existia antes da Fase 2, crie os bancos uma vez:
-   `docker exec helpdesk-postgres createdb -U helpdesk helpdesk_tickets` e o mesmo para `helpdesk_identity`.
+   `docker exec helpdesk-postgres createdb -U helpdesk helpdesk_tickets` e o mesmo para `helpdesk_identity` e `helpdesk_notifications`.
+   Painel do RabbitMQ: http://localhost:15672 (usuário `helpdesk`, senha `helpdesk_dev`, só para dev).
 2. Rode os serviços (cada um em um terminal; as migrations são aplicadas sozinhas em Development):
    ```
-   dotnet run --project src/Services/Identity/Identity.Api --urls http://localhost:5081
-   dotnet run --project src/Services/Tickets/Tickets.Api   --urls http://localhost:5080
+   dotnet run --project src/Services/Identity/Identity.Api           --urls http://localhost:5081
+   dotnet run --project src/Services/Tickets/Tickets.Api             --urls http://localhost:5080
+   dotnet run --project src/Services/Notifications/Notifications.Api --urls http://localhost:5082
    dotnet run --project src/Gateway/Gateway.Api            --urls http://localhost:5000
    ```
+   > Na primeira vez, suba Tickets e Notifications **antes** de gerar eventos: cada serviço cria suas filas ao
+   > iniciar, e um evento publicado antes de existir qualquer fila interessada é descartado pelo RabbitMQ.
 3. Use **sempre o gateway** (`http://localhost:5000`) como porta de entrada. Teste com os arquivos `*.http`
    (VS Code com REST Client, ou Visual Studio). Fluxo: registrar empresa → login → usar o `accessToken` nos chamados.
 
@@ -27,6 +31,9 @@ SaaS multi-tenant de help desk (chamados de suporte), construído em microsservi
 ```
 src/Gateway/Gateway.Api                API Gateway (YARP): entrada única, segurança de borda
 src/BuildingBlocks/HelpDeskFlow.Auth   contrato compartilhado: papéis, claims, validação de JWT
+src/BuildingBlocks/HelpDeskFlow.Contracts            eventos de integração + interfaces (sem dependências)
+src/BuildingBlocks/HelpDeskFlow.Messaging.RabbitMq   publicador/consumidor sobre RabbitMQ.Client
+src/Services/Notifications/            consome eventos e gera notificações (serviço simples: um projeto só)
 src/Services/Identity/                 cadastro de empresas, login, JWT, refresh tokens, usuários
 src/Services/Tickets/                  chamados (isolados por empresa e por usuário)
   <Serviço>.Domain          regras de negócio puras
@@ -49,6 +56,28 @@ Regra de dependência: `Api → Infrastructure → Application → Domain`. O Do
 - Autorização por papéis (Admin, Agent, Customer); tenant sempre vindo do token, nunca do corpo da requisição
 - Erros inesperados nunca vazam detalhes internos
 
+### Comunicação entre serviços (eventos com RabbitMQ)
+
+```
+Identity ──UserRegistered──────────────► Tickets (cópia local de usuários → valida o responsável)
+    └──────────────────────────────────► Notifications (cópia local: quem e qual e-mail notificar)
+Tickets ──TicketCreated/Assigned/Resolved──► Notifications (grava a notificação do usuário certo)
+```
+
+- Um exchange `topic` (`helpdeskflow.events`); cada serviço tem **a sua fila por evento** (`<serviço>.<evento>`)
+- **Publisher confirms** (só considera publicado quando o broker confirmou), mensagens persistentes
+- **Ack manual** depois de processar, 3 tentativas com espera crescente e então **DLQ** (`*.dlq`) para análise
+- **Idempotência**: entregas duplicadas não geram notificações em dobro (tabela de eventos já processados)
+- O Tickets não chama o Identity a cada requisição: valida o responsável por uma **cópia local** mantida por eventos
+  (consistência eventual: se um usuário acabou de ser criado, pode levar instantes para ser reconhecido)
+- Os serviços sobrevivem a falhas: com o Notifications fora, os eventos aguardam na fila; com o RabbitMQ fora, as
+  requisições continuam funcionando e os consumidores reconectam sozinhos
+- **Limitação conhecida:** se o broker estiver fora no instante da publicação, o evento é perdido (o dado já foi salvo,
+  mas o evento não saiu). A Fase 5 resolve com o padrão **Outbox**
+
+> MassTransit foi evitado de propósito: a v9 passou a ser comercial. Usamos `RabbitMQ.Client` direto,
+> o que também ajuda a entender o que acontece por baixo.
+
 ### Gateway (borda)
 
 - Entrada única: os clientes só falam com o gateway; as rotas ficam em `Gateway.Api/appsettings.json`
@@ -67,6 +96,6 @@ Regra de dependência: `Api → Infrastructure → Application → Domain`. O Do
 - [x] Fase 1 — serviço Tickets, EF Core, PostgreSQL, isolamento por tenant (Global Query Filter)
 - [x] Fase 2 — serviço Identity (registro, login, JWT com claim de tenant, papéis, refresh tokens)
 - [x] Fase 3 — API Gateway (YARP): entrada única, validação de JWT, rate limiting por tenant
-- [ ] Fase 4 — serviço Tenants + eventos com RabbitMQ/MassTransit (Notifications)
-- [ ] Fase 5 — SLA com jobs agendados, Outbox, Saga de onboarding
+- [x] Fase 4 — eventos com RabbitMQ (Identity → Tickets/Notifications), serviço Notifications, DLQ, idempotência
+- [ ] Fase 5 — Outbox (publicação confiável), SLA com jobs agendados, Saga de onboarding, serviço Tenants
 - [ ] Fase 6 — observabilidade (Serilog, OpenTelemetry), testes, CI/CD

@@ -1,4 +1,5 @@
 using HelpDeskFlow.Auth;
+using HelpDeskFlow.Messaging.RabbitMq;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Tickets.Api;
@@ -14,6 +15,7 @@ builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false); // não anunci
 builder.Services.AddOpenApi();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHelpDeskAuthentication(builder.Configuration);
+builder.Services.AddRabbitMessaging(builder.Configuration, serviceName: "tickets");
 builder.Services.AddScoped<ICurrentUser, ClaimsCurrentUser>();
 builder.Services.AddTicketsServices(builder.Configuration);
 builder.Services.AddProblemDetails();

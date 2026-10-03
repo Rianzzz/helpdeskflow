@@ -4,6 +4,7 @@ using HelpDeskFlow.Auth;
 using Identity.Application;
 using Identity.Domain;
 using Identity.Infrastructure;
+using HelpDeskFlow.Messaging.RabbitMq;
 using Identity.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -16,6 +17,7 @@ builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false); // não anunci
 builder.Services.AddOpenApi();
 builder.Services.AddIdentityServices(builder.Configuration);
 builder.Services.AddHelpDeskAuthentication(builder.Configuration);
+builder.Services.AddRabbitMessaging(builder.Configuration, serviceName: "identity");
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 

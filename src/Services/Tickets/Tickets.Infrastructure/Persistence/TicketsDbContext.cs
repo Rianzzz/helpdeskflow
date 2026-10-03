@@ -8,6 +8,7 @@ public class TicketsDbContext(DbContextOptions<TicketsDbContext> options, ICurre
     : DbContext(options)
 {
     public DbSet<Ticket> Tickets => Set<Ticket>();
+    public DbSet<KnownUser> KnownUsers => Set<KnownUser>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -30,6 +31,15 @@ public class TicketsDbContext(DbContextOptions<TicketsDbContext> options, ICurre
             e.HasQueryFilter(t => t.TenantId == currentUser.TenantId
                                   && (!currentUser.IsCustomer || t.RequesterId == currentUser.UserId));
             e.HasIndex(t => t.RequesterId);
+        });
+
+        modelBuilder.Entity<KnownUser>(e =>
+        {
+            e.ToTable("known_users");
+            e.HasKey(u => u.Id);
+            e.Property(u => u.Name).HasMaxLength(150).IsRequired();
+            e.Property(u => u.Role).HasMaxLength(20).IsRequired();
+            e.HasIndex(u => u.TenantId);
         });
     }
 }

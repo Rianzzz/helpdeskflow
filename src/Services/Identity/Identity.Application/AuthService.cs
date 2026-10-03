@@ -1,5 +1,7 @@
 using System.Net.Mail;
+using HelpDeskFlow.Contracts;
 using Identity.Domain;
+using Microsoft.Extensions.Logging;
 
 namespace Identity.Application;
 
@@ -23,7 +25,9 @@ public class AuthService(
     IUnitOfWork unitOfWork,
     IPasswordHasher hasher,
     ITokenService tokens,
-    TimeProvider clock)
+    TimeProvider clock,
+    IEventPublisher events,
+    ILogger<AuthService> logger)
 {
     public async Task<AuthResponse> RegisterTenantAsync(RegisterTenantRequest request, CancellationToken ct)
     {
@@ -40,6 +44,7 @@ public class AuthService(
         await users.AddAsync(admin, ct);
         var response = await IssueTokensAsync(admin);
         await unitOfWork.SaveChangesAsync(ct); // tenant + admin + refresh token: tudo ou nada
+        await PublishUserRegisteredAsync(admin);
         return response;
     }
 
@@ -130,6 +135,7 @@ public class AuthService(
         var user = User.Create(tenantId, request.Name, email, hasher.Hash(request.Password), request.Role);
         await users.AddAsync(user, ct);
         await unitOfWork.SaveChangesAsync(ct);
+        await PublishUserRegisteredAsync(user);
         return UserResponse.From(user);
     }
 
@@ -140,6 +146,24 @@ public class AuthService(
     {
         var user = await users.GetByIdAsync(userId, ct);
         return user is null ? null : UserResponse.From(user);
+    }
+
+    /// <summary>
+    /// Avisa os outros serviços que existe um novo usuário. O cadastro já foi salvo, então uma falha aqui
+    /// não derruba a requisição. Limitação conhecida: o evento pode se perder se o broker estiver fora do ar
+    /// neste instante. A Fase 5 resolve isso com o padrão Outbox.
+    /// </summary>
+    private async Task PublishUserRegisteredAsync(User user)
+    {
+        try
+        {
+            await events.PublishAsync(UserRegistered.Create(
+                user.TenantId, user.Id, user.Name, user.Email, user.Role.ToString()));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Falha ao publicar UserRegistered do usuário {UserId}", user.Id);
+        }
     }
 
     private async Task EnsureAccountIsUsableAsync(User user, CancellationToken ct)

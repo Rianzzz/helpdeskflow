@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Tickets.Application\Tickets.Application.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\HelpDeskFlow.Contracts\HelpDeskFlow.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\HelpDeskFlow.Messaging.RabbitMq\HelpDeskFlow.Messaging.RabbitMq.csproj" />
   </ItemGroup>
 
   <ItemGroup>
