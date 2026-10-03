@@ -24,9 +24,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
 
@@ -45,7 +45,7 @@ jobs:
 
       - name: Guardar resultados dos testes
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: test-results
           path: "**/TestResults/*.trx"
@@ -56,8 +56,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
 
@@ -76,7 +76,7 @@ jobs:
     timeout-minutes: 25
     needs: build-and-test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configurar segredos efêmeros (valem só nesta execução)
         run: echo "JWT_SIGNING_KEY=$(openssl rand -base64 48)" > .env
@@ -85,7 +85,7 @@ jobs:
         run: docker compose --profile apps up -d --build --wait --wait-timeout 300
 
       - name: Teste de fumaça pelo gateway
-        run: ./scripts/smoke-test.sh http://localhost:5000
+        run: bash scripts/smoke-test.sh http://localhost:5000
 
       - name: Logs dos contêineres (se algo falhou)
         if: failure()
