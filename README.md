@@ -14,9 +14,10 @@ SaaS multi-tenant de help desk (chamados de suporte), construído em microsservi
    ```
    dotnet run --project src/Services/Identity/Identity.Api --urls http://localhost:5081
    dotnet run --project src/Services/Tickets/Tickets.Api   --urls http://localhost:5080
+   dotnet run --project src/Gateway/Gateway.Api            --urls http://localhost:5000
    ```
-3. Teste com os arquivos `*.http` de cada API (VS Code com REST Client, ou Visual Studio).
-   Fluxo: registrar empresa → login → usar o `accessToken` no Tickets.
+3. Use **sempre o gateway** (`http://localhost:5000`) como porta de entrada. Teste com os arquivos `*.http`
+   (VS Code com REST Client, ou Visual Studio). Fluxo: registrar empresa → login → usar o `accessToken` nos chamados.
 
 > A chave JWT de `appsettings.Development.json` é só para desenvolvimento. Em produção use
 > `Jwt__SigningKey` via variável de ambiente / cofre de segredos.
@@ -24,6 +25,7 @@ SaaS multi-tenant de help desk (chamados de suporte), construído em microsservi
 ## Estrutura
 
 ```
+src/Gateway/Gateway.Api                API Gateway (YARP): entrada única, segurança de borda
 src/BuildingBlocks/HelpDeskFlow.Auth   contrato compartilhado: papéis, claims, validação de JWT
 src/Services/Identity/                 cadastro de empresas, login, JWT, refresh tokens, usuários
 src/Services/Tickets/                  chamados (isolados por empresa e por usuário)
@@ -47,11 +49,24 @@ Regra de dependência: `Api → Infrastructure → Application → Domain`. O Do
 - Autorização por papéis (Admin, Agent, Customer); tenant sempre vindo do token, nunca do corpo da requisição
 - Erros inesperados nunca vazam detalhes internos
 
+### Gateway (borda)
+
+- Entrada única: os clientes só falam com o gateway; as rotas ficam em `Gateway.Api/appsettings.json`
+- JWT validado já no gateway (e de novo nos serviços: defesa em profundidade); **toda rota exige login por padrão**,
+  só as de `/api/auth` são marcadas como anônimas
+- **Rate limiting por empresa** (tenant) nas rotas autenticadas e por IP no login/cadastro, com `Retry-After`
+- CORS só para origens listadas; cabeçalhos de segurança (CSP, nosniff, X-Frame-Options, no-store);
+  sem `Server: Kestrel`; corpo máximo de 1 MB; timeout de 30 s para os serviços
+- `X-Correlation-Id` gerado/propagado em cada requisição (base para os logs distribuídos da Fase 6)
+- Os serviços aceitam `X-Forwarded-For` só de proxies confiáveis, para o rate limit enxergar o IP real do cliente
+
+> Em produção os serviços internos não devem ser expostos à internet: só o gateway (rede Docker/Kubernetes privada).
+
 ## Roadmap
 
 - [x] Fase 1 — serviço Tickets, EF Core, PostgreSQL, isolamento por tenant (Global Query Filter)
 - [x] Fase 2 — serviço Identity (registro, login, JWT com claim de tenant, papéis, refresh tokens)
-- [ ] Fase 3 — API Gateway (YARP): entrada única, validação de JWT, rate limiting por tenant
+- [x] Fase 3 — API Gateway (YARP): entrada única, validação de JWT, rate limiting por tenant
 - [ ] Fase 4 — serviço Tenants + eventos com RabbitMQ/MassTransit (Notifications)
 - [ ] Fase 5 — SLA com jobs agendados, Outbox, Saga de onboarding
 - [ ] Fase 6 — observabilidade (Serilog, OpenTelemetry), testes, CI/CD

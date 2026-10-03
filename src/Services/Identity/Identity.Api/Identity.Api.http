@@ -1,4 +1,5 @@
-@host = http://localhost:5081
+# Todas as chamadas passam pelo API Gateway (porta 5000).
+@host = http://localhost:5000
 
 ### Registrar uma empresa (cria o tenant + o usuário Admin) — devolve os tokens
 POST {{host}}/api/auth/register-tenant

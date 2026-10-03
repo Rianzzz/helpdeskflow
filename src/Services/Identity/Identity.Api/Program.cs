@@ -6,16 +6,24 @@ using Identity.Domain;
 using Identity.Infrastructure;
 using Identity.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false); // não anuncia tecnologia/versão
 builder.Services.AddOpenApi();
 builder.Services.AddIdentityServices(builder.Configuration);
 builder.Services.AddHelpDeskAuthentication(builder.Configuration);
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
+
+// Atrás do API Gateway, o IP de origem da conexão é o do gateway. O YARP repassa o IP real do cliente
+// em X-Forwarded-For, e aqui o aceitamos SOMENTE de proxies confiáveis (por padrão, apenas loopback;
+// em produção configure KnownProxies/KnownNetworks). Sem isso, o rate limit por IP contaria todo mundo junto.
+builder.Services.Configure<ForwardedHeadersOptions>(o =>
+    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto);
 
 // Rate limiting: limita tentativas por IP nas rotas de autenticação (freia força bruta e abuso de cadastro).
 builder.Services.AddRateLimiter(o =>
@@ -32,6 +40,8 @@ builder.Services.AddRateLimiter(o =>
 });
 
 var app = builder.Build();
+
+app.UseForwardedHeaders();
 
 app.UseExceptionHandler(handler => handler.Run(async context =>
 {

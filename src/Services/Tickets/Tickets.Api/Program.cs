@@ -10,6 +10,7 @@ using Tickets.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false); // não anuncia tecnologia/versão
 builder.Services.AddOpenApi();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHelpDeskAuthentication(builder.Configuration);

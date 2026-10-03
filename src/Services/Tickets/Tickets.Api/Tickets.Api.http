@@ -1,5 +1,6 @@
-@identity = http://localhost:5081
-@tickets = http://localhost:5080
+# Todas as chamadas passam pelo API Gateway (porta 5000).
+@identity = http://localhost:5000
+@tickets = http://localhost:5000
 # Cole aqui o accessToken obtido no login (veja Identity.Api.http):
 @token = COLE_O_ACCESS_TOKEN_AQUI
 
