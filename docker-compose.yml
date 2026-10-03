@@ -1,0 +1,21 @@
+# Infraestrutura local de desenvolvimento. Credenciais abaixo são SÓ para dev local.
+services:
+  postgres:
+    image: postgres:17
+    container_name: helpdesk-postgres
+    environment:
+      POSTGRES_DB: helpdesk
+      POSTGRES_USER: helpdesk
+      POSTGRES_PASSWORD: helpdesk_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - helpdesk-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U helpdesk -d helpdesk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  helpdesk-pgdata:
