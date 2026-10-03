@@ -1,3 +1,4 @@
+using HelpDeskFlow.Messaging.Outbox;
 using Microsoft.EntityFrameworkCore;
 using Tickets.Application.Abstractions;
 using Tickets.Domain.Entities;
@@ -13,6 +14,7 @@ public class TicketsDbContext(DbContextOptions<TicketsDbContext> options, ICurre
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("tickets");
+        modelBuilder.ApplyOutbox();
 
         modelBuilder.Entity<Ticket>(e =>
         {

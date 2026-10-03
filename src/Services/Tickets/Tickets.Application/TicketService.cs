@@ -1,5 +1,4 @@
 using HelpDeskFlow.Contracts;
-using Microsoft.Extensions.Logging;
 using Tickets.Application.Abstractions;
 using Tickets.Domain;
 using Tickets.Domain.Entities;
@@ -22,17 +21,19 @@ public class TicketService(
     ITicketRepository repository,
     IKnownUserRepository knownUsers,
     ICurrentUser currentUser,
-    IEventPublisher events,
-    ILogger<TicketService> logger)
+    IEventPublisher events)
 {
     public async Task<TicketResponse> CreateAsync(CreateTicketRequest request, CancellationToken ct)
     {
         var ticket = Ticket.Open(currentUser.TenantId, currentUser.UserId, request.Title, request.Description, request.Priority);
         await repository.AddAsync(ticket, ct);
+
+        // Outbox: o evento é registrado ANTES do SaveChanges e gravado na mesma transação do chamado.
+        // Ou os dois existem, ou nenhum. O envio ao RabbitMQ acontece depois, em segundo plano.
+        await events.PublishAsync(TicketCreated.Create(
+            ticket.TenantId, ticket.Id, ticket.RequesterId, ticket.Title, ticket.Priority.ToString()));
         await repository.SaveChangesAsync(ct);
 
-        await PublishAsync(TicketCreated.Create(
-            ticket.TenantId, ticket.Id, ticket.RequesterId, ticket.Title, ticket.Priority.ToString()));
         return TicketResponse.From(ticket);
     }
 
@@ -52,12 +53,12 @@ public class TicketService(
             throw new DomainException("Responsável inválido: precisa ser Admin ou Agent da sua empresa.");
 
         return await ChangeAsync(id, t => t.AssignTo(request.AssigneeId),
-            t => PublishAsync(TicketAssigned.Create(t.TenantId, t.Id, t.RequesterId, request.AssigneeId, t.Title)), ct);
+            t => events.PublishAsync(TicketAssigned.Create(t.TenantId, t.Id, t.RequesterId, request.AssigneeId, t.Title)), ct);
     }
 
     public Task<TicketResponse?> ResolveAsync(Guid id, CancellationToken ct) =>
         ChangeAsync(id, t => t.Resolve(),
-            t => PublishAsync(TicketResolved.Create(t.TenantId, t.Id, t.RequesterId, currentUser.UserId, t.Title)), ct);
+            t => events.PublishAsync(TicketResolved.Create(t.TenantId, t.Id, t.RequesterId, currentUser.UserId, t.Title)), ct);
 
     public Task<TicketResponse?> CloseAsync(Guid id, CancellationToken ct) =>
         ChangeAsync(id, t => t.Close(), null, ct);
@@ -66,33 +67,16 @@ public class TicketService(
         ChangeAsync(id, t => t.Reopen(), null, ct);
 
     private async Task<TicketResponse?> ChangeAsync(
-        Guid id, Action<Ticket> change, Func<Ticket, Task>? afterSave, CancellationToken ct)
+        Guid id, Action<Ticket> change, Func<Ticket, Task>? stageEvent, CancellationToken ct)
     {
         var ticket = await repository.GetByIdAsync(id, ct);
         if (ticket is null) return null;
 
         change(ticket);
-        await repository.SaveChangesAsync(ct);
-
-        if (afterSave is not null)
-            await afterSave(ticket);
+        if (stageEvent is not null)
+            await stageEvent(ticket); // registra no Outbox, ainda sem salvar
+        await repository.SaveChangesAsync(ct); // chamado + evento: uma única transação
 
         return TicketResponse.From(ticket);
-    }
-
-    /// <summary>
-    /// Publica DEPOIS de salvar. Se o broker falhar, o chamado já foi salvo e a requisição não deve falhar:
-    /// registramos o erro. Limitação conhecida (dual write): o evento pode se perder. Fase 5: padrão Outbox.
-    /// </summary>
-    private async Task PublishAsync<TEvent>(TEvent @event) where TEvent : IIntegrationEvent
-    {
-        try
-        {
-            await events.PublishAsync(@event);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Falha ao publicar {Event} ({EventId})", TEvent.EventName, @event.EventId);
-        }
     }
 }

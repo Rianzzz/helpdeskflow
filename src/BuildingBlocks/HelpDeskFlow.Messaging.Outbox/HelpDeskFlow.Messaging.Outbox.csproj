@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HelpDeskFlow.Contracts\HelpDeskFlow.Contracts.csproj" />
+    <ProjectReference Include="..\HelpDeskFlow.Messaging.RabbitMq\HelpDeskFlow.Messaging.RabbitMq.csproj" />
+  </ItemGroup>
+
+</Project>

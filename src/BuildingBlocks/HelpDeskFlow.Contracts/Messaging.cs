@@ -14,6 +14,11 @@ public interface IIntegrationEvent
     static abstract string EventName { get; }
 }
 
+/// <summary>
+/// Publica eventos. Nos serviços com Outbox, "publicar" apenas REGISTRA o evento na mesma unidade de trabalho do
+/// banco: ele só existe de verdade quando o SaveChanges do chamador confirma a transação (dado + evento, ou nada).
+/// Por isso, chame PublishAsync ANTES do SaveChanges.
+/// </summary>
 public interface IEventPublisher
 {
     Task PublishAsync<TEvent>(TEvent @event, CancellationToken ct = default) where TEvent : IIntegrationEvent;

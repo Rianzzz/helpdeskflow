@@ -1,4 +1,5 @@
 using Identity.Application;
+using HelpDeskFlow.Messaging.Outbox;
 using Identity.Domain;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -14,6 +15,7 @@ public class IdentityDbContext(DbContextOptions<IdentityDbContext> options) : Db
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.HasDefaultSchema("identity");
+        b.ApplyOutbox();
 
         b.Entity<Tenant>(e =>
         {

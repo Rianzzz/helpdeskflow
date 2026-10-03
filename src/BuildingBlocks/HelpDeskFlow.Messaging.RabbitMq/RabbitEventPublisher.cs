@@ -10,23 +10,34 @@ public static class MessageSerializer
     public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
 }
 
+/// <summary>Publica uma mensagem já serializada. É o que o dispatcher do Outbox usa.</summary>
+public interface IRawEventPublisher
+{
+    Task PublishRawAsync(string routingKey, Guid messageId, DateTime occurredAt, ReadOnlyMemory<byte> body, CancellationToken ct);
+}
+
 public sealed class RabbitEventPublisher(RabbitConnection connection, ILogger<RabbitEventPublisher> logger)
-    : IEventPublisher, IAsyncDisposable
+    : IEventPublisher, IRawEventPublisher, IAsyncDisposable
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
     private IChannel? _channel;
 
-    public async Task PublishAsync<TEvent>(TEvent @event, CancellationToken ct = default)
-        where TEvent : IIntegrationEvent
+    public Task PublishAsync<TEvent>(TEvent @event, CancellationToken ct = default)
+        where TEvent : IIntegrationEvent =>
+        PublishRawAsync(TEvent.EventName, @event.EventId, @event.OccurredAt,
+            JsonSerializer.SerializeToUtf8Bytes(@event, MessageSerializer.Options), ct);
+
+    public async Task PublishRawAsync(
+        string routingKey, Guid messageId, DateTime occurredAt, ReadOnlyMemory<byte> body, CancellationToken ct)
     {
-        var body = JsonSerializer.SerializeToUtf8Bytes(@event, MessageSerializer.Options);
         var props = new BasicProperties
         {
-            MessageId = @event.EventId.ToString(),
-            Type = TEvent.EventName,
+            MessageId = messageId.ToString(),
+            Type = routingKey,
             ContentType = "application/json",
             Persistent = true, // a mensagem sobrevive a um restart do RabbitMQ
-            Timestamp = new AmqpTimestamp(new DateTimeOffset(@event.OccurredAt).ToUnixTimeSeconds())
+            Timestamp = new AmqpTimestamp(
+                new DateTimeOffset(DateTime.SpecifyKind(occurredAt, DateTimeKind.Utc)).ToUnixTimeSeconds())
         };
 
         await _lock.WaitAsync(ct);
@@ -36,8 +47,8 @@ public sealed class RabbitEventPublisher(RabbitConnection connection, ILogger<Ra
 
             // Com "publisher confirms", este await só termina quando o broker CONFIRMA que recebeu e gravou
             // a mensagem. Sem isso, "publicou" não significaria "o RabbitMQ realmente tem a mensagem".
-            await channel.BasicPublishAsync(Topology.EventsExchange, TEvent.EventName, mandatory: false, props, body, ct);
-            logger.LogInformation("Evento publicado: {Event} ({EventId})", TEvent.EventName, @event.EventId);
+            await channel.BasicPublishAsync(Topology.EventsExchange, routingKey, mandatory: false, props, body, ct);
+            logger.LogInformation("Evento publicado: {Event} ({EventId})", routingKey, messageId);
         }
         finally
         {

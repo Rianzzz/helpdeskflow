@@ -1,3 +1,4 @@
+using HelpDeskFlow.Messaging.Outbox;
 using Identity.Application;
 using Identity.Infrastructure.Persistence;
 using Identity.Infrastructure.Security;
@@ -15,6 +16,7 @@ public static class DependencyInjection
             o.UseNpgsql(config.GetConnectionString("IdentityDb")).UseSnakeCaseNamingConvention());
 
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<IdentityDbContext>());
+        services.AddOutbox<IdentityDbContext>(); // eventos saem pela tabela outbox_messages, não direto para o broker
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<ITenantRepository, TenantRepository>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();

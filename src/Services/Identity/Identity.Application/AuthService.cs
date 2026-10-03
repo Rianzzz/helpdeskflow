@@ -1,7 +1,6 @@
 using System.Net.Mail;
 using HelpDeskFlow.Contracts;
 using Identity.Domain;
-using Microsoft.Extensions.Logging;
 
 namespace Identity.Application;
 
@@ -26,8 +25,7 @@ public class AuthService(
     IPasswordHasher hasher,
     ITokenService tokens,
     TimeProvider clock,
-    IEventPublisher events,
-    ILogger<AuthService> logger)
+    IEventPublisher events)
 {
     public async Task<AuthResponse> RegisterTenantAsync(RegisterTenantRequest request, CancellationToken ct)
     {
@@ -43,8 +41,8 @@ public class AuthService(
         await tenants.AddAsync(tenant, ct);
         await users.AddAsync(admin, ct);
         var response = await IssueTokensAsync(admin);
-        await unitOfWork.SaveChangesAsync(ct); // tenant + admin + refresh token: tudo ou nada
-        await PublishUserRegisteredAsync(admin);
+        await StageUserRegisteredAsync(admin);
+        await unitOfWork.SaveChangesAsync(ct); // tenant + admin + refresh token + evento: tudo ou nada
         return response;
     }
 
@@ -134,8 +132,8 @@ public class AuthService(
 
         var user = User.Create(tenantId, request.Name, email, hasher.Hash(request.Password), request.Role);
         await users.AddAsync(user, ct);
-        await unitOfWork.SaveChangesAsync(ct);
-        await PublishUserRegisteredAsync(user);
+        await StageUserRegisteredAsync(user);
+        await unitOfWork.SaveChangesAsync(ct); // usuário + evento na mesma transação (Outbox)
         return UserResponse.From(user);
     }
 
@@ -149,22 +147,12 @@ public class AuthService(
     }
 
     /// <summary>
-    /// Avisa os outros serviços que existe um novo usuário. O cadastro já foi salvo, então uma falha aqui
-    /// não derruba a requisição. Limitação conhecida: o evento pode se perder se o broker estiver fora do ar
-    /// neste instante. A Fase 5 resolve isso com o padrão Outbox.
+    /// Registra o evento no Outbox (ainda não é enviado ao RabbitMQ): ele só passa a existir quando o SaveChanges
+    /// confirma a transação, junto com o usuário. Quem publica de verdade é o dispatcher, em segundo plano.
     /// </summary>
-    private async Task PublishUserRegisteredAsync(User user)
-    {
-        try
-        {
-            await events.PublishAsync(UserRegistered.Create(
-                user.TenantId, user.Id, user.Name, user.Email, user.Role.ToString()));
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Falha ao publicar UserRegistered do usuário {UserId}", user.Id);
-        }
-    }
+    private Task StageUserRegisteredAsync(User user) =>
+        events.PublishAsync(UserRegistered.Create(
+            user.TenantId, user.Id, user.Name, user.Email, user.Role.ToString()));
 
     private async Task EnsureAccountIsUsableAsync(User user, CancellationToken ct)
     {

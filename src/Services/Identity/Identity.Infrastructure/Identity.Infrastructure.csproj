@@ -3,6 +3,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Identity.Application\Identity.Application.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\HelpDeskFlow.Auth\HelpDeskFlow.Auth.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\HelpDeskFlow.Messaging.Outbox\HelpDeskFlow.Messaging.Outbox.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\HelpDeskFlow.Messaging.RabbitMq\HelpDeskFlow.Messaging.RabbitMq.csproj" />
   </ItemGroup>
 
   <ItemGroup>

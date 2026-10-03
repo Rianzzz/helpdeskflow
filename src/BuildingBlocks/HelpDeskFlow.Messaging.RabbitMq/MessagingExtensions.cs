@@ -1,6 +1,7 @@
 using HelpDeskFlow.Contracts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
 namespace HelpDeskFlow.Messaging.RabbitMq;
@@ -18,7 +19,11 @@ public static class MessagingExtensions
         });
 
         services.AddSingleton<RabbitConnection>();
-        services.AddSingleton<IEventPublisher, RabbitEventPublisher>();
+        services.AddSingleton<RabbitEventPublisher>();
+        services.AddSingleton<IRawEventPublisher>(sp => sp.GetRequiredService<RabbitEventPublisher>());
+
+        // Padrão: publicação direta. Serviços com Outbox substituem isto (AddOutbox), em qualquer ordem de registro.
+        services.TryAddSingleton<IEventPublisher>(sp => sp.GetRequiredService<RabbitEventPublisher>());
         return services;
     }
 

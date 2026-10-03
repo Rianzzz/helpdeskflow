@@ -39,6 +39,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HelpDeskFlow.Messaging.Rabb
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Notifications.Api", "src\Services\Notifications\Notifications.Api\Notifications.Api.csproj", "{55FB86D5-2229-41C3-8C0A-7E73140369C0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HelpDeskFlow.Messaging.Outbox", "src\BuildingBlocks\HelpDeskFlow.Messaging.Outbox\HelpDeskFlow.Messaging.Outbox.csproj", "{FFD51076-A18D-4509-BD78-6B89BB2C1947}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -205,6 +207,18 @@ Global
 		{55FB86D5-2229-41C3-8C0A-7E73140369C0}.Release|x64.Build.0 = Release|Any CPU
 		{55FB86D5-2229-41C3-8C0A-7E73140369C0}.Release|x86.ActiveCfg = Release|Any CPU
 		{55FB86D5-2229-41C3-8C0A-7E73140369C0}.Release|x86.Build.0 = Release|Any CPU
+		{FFD51076-A18D-4509-BD78-6B89BB2C1947}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FFD51076-A18D-4509-BD78-6B89BB2C1947}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FFD51076-A18D-4509-BD78-6B89BB2C1947}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{FFD51076-A18D-4509-BD78-6B89BB2C1947}.Debug|x64.Build.0 = Debug|Any CPU
+		{FFD51076-A18D-4509-BD78-6B89BB2C1947}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FFD51076-A18D-4509-BD78-6B89BB2C1947}.Debug|x86.Build.0 = Debug|Any CPU
+		{FFD51076-A18D-4509-BD78-6B89BB2C1947}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FFD51076-A18D-4509-BD78-6B89BB2C1947}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FFD51076-A18D-4509-BD78-6B89BB2C1947}.Release|x64.ActiveCfg = Release|Any CPU
+		{FFD51076-A18D-4509-BD78-6B89BB2C1947}.Release|x64.Build.0 = Release|Any CPU
+		{FFD51076-A18D-4509-BD78-6B89BB2C1947}.Release|x86.ActiveCfg = Release|Any CPU
+		{FFD51076-A18D-4509-BD78-6B89BB2C1947}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -227,5 +241,6 @@ Global
 		{D9EBD59F-6E09-4357-8A0A-629FAD688361} = {90298CBA-BD6F-3A0A-69D5-97CAD7B05E7E}
 		{0B679B8A-DFFC-4054-BD43-0991B91E911E} = {90298CBA-BD6F-3A0A-69D5-97CAD7B05E7E}
 		{55FB86D5-2229-41C3-8C0A-7E73140369C0} = {90298CBA-BD6F-3A0A-69D5-97CAD7B05E7E}
+		{FFD51076-A18D-4509-BD78-6B89BB2C1947} = {90298CBA-BD6F-3A0A-69D5-97CAD7B05E7E}
 	EndGlobalSection
 EndGlobal
