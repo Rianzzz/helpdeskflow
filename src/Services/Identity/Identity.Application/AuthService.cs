@@ -1,0 +1,187 @@
+using System.Net.Mail;
+using Identity.Domain;
+
+namespace Identity.Application;
+
+public record RegisterTenantRequest(string CompanyName, string AdminName, string Email, string Password);
+public record LoginRequest(string Email, string Password);
+public record RefreshRequest(string RefreshToken);
+public record CreateUserRequest(string Name, string Email, string Password, UserRole Role);
+
+public record UserResponse(Guid Id, Guid TenantId, string Name, string Email, UserRole Role, bool IsActive)
+{
+    public static UserResponse From(User u) => new(u.Id, u.TenantId, u.Name, u.Email, u.Role, u.IsActive);
+}
+
+public record AuthResponse(
+    string AccessToken, string TokenType, int ExpiresInSeconds, string RefreshToken, UserResponse User);
+
+public class AuthService(
+    IUserRepository users,
+    ITenantRepository tenants,
+    IRefreshTokenRepository refreshTokens,
+    IUnitOfWork unitOfWork,
+    IPasswordHasher hasher,
+    ITokenService tokens,
+    TimeProvider clock)
+{
+    public async Task<AuthResponse> RegisterTenantAsync(RegisterTenantRequest request, CancellationToken ct)
+    {
+        var email = ValidateEmail(request.Email);
+        PasswordPolicy.Validate(request.Password);
+
+        if (await users.EmailExistsAsync(email, ct))
+            throw new ConflictException("E-mail já cadastrado.");
+
+        var tenant = Tenant.Create(request.CompanyName);
+        var admin = User.Create(tenant.Id, request.AdminName, email, hasher.Hash(request.Password), UserRole.Admin);
+
+        await tenants.AddAsync(tenant, ct);
+        await users.AddAsync(admin, ct);
+        var response = await IssueTokensAsync(admin);
+        await unitOfWork.SaveChangesAsync(ct); // tenant + admin + refresh token: tudo ou nada
+        return response;
+    }
+
+    public async Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct)
+    {
+        var now = clock.GetUtcNow().UtcDateTime;
+        var email = (request.Email ?? string.Empty).Trim().ToLowerInvariant();
+        var user = await users.GetByEmailAsync(email, ct);
+
+        if (user is null)
+        {
+            hasher.SimulateVerification(request.Password ?? string.Empty);
+            throw new AuthenticationFailedException();
+        }
+
+        // Conta bloqueada: nem verifica a senha (e a resposta é idêntica à de senha errada).
+        if (user.IsLockedOut(now))
+            throw new AuthenticationFailedException();
+
+        if (!hasher.Verify(user.PasswordHash, request.Password ?? string.Empty))
+        {
+            user.RegisterFailedLogin(now);
+            await unitOfWork.SaveChangesAsync(ct);
+            throw new AuthenticationFailedException();
+        }
+
+        await EnsureAccountIsUsableAsync(user, ct);
+
+        user.RegisterSuccessfulLogin();
+        var response = await IssueTokensAsync(user);
+        await unitOfWork.SaveChangesAsync(ct);
+        return response;
+    }
+
+    /// <summary>
+    /// Troca um refresh token por um novo par de tokens (rotação): o token usado é invalidado.
+    /// Se alguém apresentar um token JÁ usado, assumimos roubo e derrubamos todas as sessões do usuário.
+    /// </summary>
+    public async Task<AuthResponse> RefreshAsync(RefreshRequest request, CancellationToken ct)
+    {
+        var now = clock.GetUtcNow().UtcDateTime;
+        if (string.IsNullOrWhiteSpace(request.RefreshToken))
+            throw new AuthenticationFailedException();
+
+        var stored = await refreshTokens.GetByHashAsync(tokens.HashRefreshToken(request.RefreshToken), ct)
+                     ?? throw new AuthenticationFailedException();
+
+        if (stored.IsRevoked)
+        {
+            await refreshTokens.RevokeAllForUserAsync(stored.UserId, now, ct);
+            throw new AuthenticationFailedException();
+        }
+
+        if (stored.IsExpired(now))
+            throw new AuthenticationFailedException();
+
+        var user = await users.GetByIdAsync(stored.UserId, ct) ?? throw new AuthenticationFailedException();
+        await EnsureAccountIsUsableAsync(user, ct);
+
+        stored.Revoke(now);
+        var response = await IssueTokensAsync(user);
+        await unitOfWork.SaveChangesAsync(ct);
+        return response;
+    }
+
+    public async Task LogoutAsync(RefreshRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.RefreshToken)) return;
+
+        var stored = await refreshTokens.GetByHashAsync(tokens.HashRefreshToken(request.RefreshToken), ct);
+        if (stored is null) return; // idempotente: não revela se o token existia
+
+        stored.Revoke(clock.GetUtcNow().UtcDateTime);
+        await unitOfWork.SaveChangesAsync(ct);
+    }
+
+    public async Task<UserResponse> CreateUserAsync(Guid tenantId, CreateUserRequest request, CancellationToken ct)
+    {
+        var email = ValidateEmail(request.Email);
+        PasswordPolicy.Validate(request.Password);
+
+        if (!Enum.IsDefined(request.Role))
+            throw new DomainException("Papel inválido.");
+
+        if (await users.EmailExistsAsync(email, ct))
+            throw new ConflictException("E-mail já cadastrado.");
+
+        var user = User.Create(tenantId, request.Name, email, hasher.Hash(request.Password), request.Role);
+        await users.AddAsync(user, ct);
+        await unitOfWork.SaveChangesAsync(ct);
+        return UserResponse.From(user);
+    }
+
+    public async Task<List<UserResponse>> ListUsersAsync(Guid tenantId, CancellationToken ct) =>
+        (await users.ListByTenantAsync(tenantId, ct)).Select(UserResponse.From).ToList();
+
+    public async Task<UserResponse?> GetUserAsync(Guid userId, CancellationToken ct)
+    {
+        var user = await users.GetByIdAsync(userId, ct);
+        return user is null ? null : UserResponse.From(user);
+    }
+
+    private async Task EnsureAccountIsUsableAsync(User user, CancellationToken ct)
+    {
+        var tenant = await tenants.GetByIdAsync(user.TenantId, ct);
+        if (!user.IsActive || tenant is null || !tenant.IsActive)
+            throw new AuthenticationFailedException();
+    }
+
+    private async Task<AuthResponse> IssueTokensAsync(User user)
+    {
+        var access = tokens.CreateAccessToken(user);
+        var rawRefresh = tokens.GenerateRefreshToken();
+        var now = clock.GetUtcNow().UtcDateTime;
+
+        await refreshTokens.AddAsync(
+            RefreshToken.Issue(user.Id, tokens.HashRefreshToken(rawRefresh), now, tokens.RefreshTokenLifetime), default);
+
+        var expiresIn = (int)(access.ExpiresAt - now).TotalSeconds;
+        return new AuthResponse(access.Value, "Bearer", expiresIn, rawRefresh, UserResponse.From(user));
+    }
+
+    private static string ValidateEmail(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email) || email.Length > 254 ||
+            !MailAddress.TryCreate(email.Trim(), out var parsed) || parsed.Address != email.Trim())
+            throw new DomainException("E-mail inválido.");
+
+        return User.NormalizeEmail(email);
+    }
+}
+
+public static class PasswordPolicy
+{
+    // Recomendação atual (NIST): priorizar comprimento em vez de regras de símbolos estranhos.
+    public static void Validate(string? password)
+    {
+        if (string.IsNullOrEmpty(password) || password.Length < 10)
+            throw new DomainException("A senha deve ter pelo menos 10 caracteres.");
+        if (password.Length > 128)
+            throw new DomainException("A senha deve ter no máximo 128 caracteres.");
+        if (!password.Any(char.IsLetter) || !password.Any(char.IsDigit))
+            throw new DomainException("A senha deve conter letras e números.");
+    }
+}

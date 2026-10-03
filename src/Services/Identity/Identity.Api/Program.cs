@@ -1,0 +1,108 @@
+using System.Security.Claims;
+using System.Threading.RateLimiting;
+using HelpDeskFlow.Auth;
+using Identity.Application;
+using Identity.Domain;
+using Identity.Infrastructure;
+using Identity.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddOpenApi();
+builder.Services.AddIdentityServices(builder.Configuration);
+builder.Services.AddHelpDeskAuthentication(builder.Configuration);
+builder.Services.ConfigureHttpJsonOptions(o =>
+    o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
+
+// Rate limiting: limita tentativas por IP nas rotas de autenticação (freia força bruta e abuso de cadastro).
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.AddPolicy("auth", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = builder.Configuration.GetValue("RateLimiting:AuthPermitPerMinute", 20),
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+});
+
+var app = builder.Build();
+
+app.UseExceptionHandler(handler => handler.Run(async context =>
+{
+    var error = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+    var (status, title) = error switch
+    {
+        DomainException => (StatusCodes.Status400BadRequest, "Dados inválidos"),
+        BadHttpRequestException => (StatusCodes.Status400BadRequest, "Requisição inválida"),
+        ConflictException => (StatusCodes.Status409Conflict, "Conflito"),
+        AuthenticationFailedException => (StatusCodes.Status401Unauthorized, "Não autorizado"),
+        _ => (StatusCodes.Status500InternalServerError, "Erro interno")
+    };
+
+    context.Response.StatusCode = status;
+    await context.Response.WriteAsJsonAsync(new
+    {
+        title,
+        status,
+        // Só expomos mensagens que nós mesmos escrevemos.
+        detail = error is DomainException or ConflictException or AuthenticationFailedException ? error.Message : null
+    });
+}));
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+    using var scope = app.Services.CreateScope();
+    await scope.ServiceProvider.GetRequiredService<IdentityDbContext>().Database.MigrateAsync();
+}
+
+app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
+
+var auth = app.MapGroup("/api/auth").WithTags("Auth").RequireRateLimiting("auth");
+
+auth.MapPost("/register-tenant", async (RegisterTenantRequest r, AuthService s, CancellationToken ct) =>
+    Results.Created("/api/users/me", await s.RegisterTenantAsync(r, ct)));
+
+auth.MapPost("/login", async (LoginRequest r, AuthService s, CancellationToken ct) =>
+    Results.Ok(await s.LoginAsync(r, ct)));
+
+auth.MapPost("/refresh", async (RefreshRequest r, AuthService s, CancellationToken ct) =>
+    Results.Ok(await s.RefreshAsync(r, ct)));
+
+auth.MapPost("/logout", async (RefreshRequest r, AuthService s, CancellationToken ct) =>
+{
+    await s.LogoutAsync(r, ct);
+    return Results.NoContent();
+});
+
+var usersGroup = app.MapGroup("/api/users").WithTags("Users").RequireAuthorization();
+
+usersGroup.MapGet("/me", async (ClaimsPrincipal principal, AuthService s, CancellationToken ct) =>
+    await s.GetUserAsync(principal.UserId(), ct) is { } me ? Results.Ok(me) : Results.NotFound());
+
+// O tenant vem SEMPRE do token (assinado pelo servidor), nunca do corpo da requisição.
+usersGroup.MapGet("/", async (ClaimsPrincipal principal, AuthService s, CancellationToken ct) =>
+    Results.Ok(await s.ListUsersAsync(principal.TenantId(), ct)))
+    .RequireAuthorization(Policies.AdminOnly);
+
+usersGroup.MapPost("/", async (CreateUserRequest r, ClaimsPrincipal principal, AuthService s, CancellationToken ct) =>
+{
+    var created = await s.CreateUserAsync(principal.TenantId(), r, ct);
+    return Results.Created($"/api/users/{created.Id}", created);
+}).RequireAuthorization(Policies.AdminOnly);
+
+app.Run();
+
+static class PrincipalExtensions
+{
+    public static Guid UserId(this ClaimsPrincipal p) => Guid.Parse(p.FindFirstValue(AppClaims.Subject)!);
+    public static Guid TenantId(this ClaimsPrincipal p) => Guid.Parse(p.FindFirstValue(AppClaims.TenantId)!);
+}
