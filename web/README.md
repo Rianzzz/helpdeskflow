@@ -1,32 +1,32 @@
-# React + TypeScript + Vite
+# HelpDeskFlow: front-end
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React 19 + TypeScript + Vite, Tailwind CSS, React Router e TanStack Query.
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```
+npm install
+npm run dev      # http://localhost:5173 (repassa /api para o gateway em http://localhost:5000)
+npm test         # Vitest + Testing Library
+npm run lint     # oxlint
+npm run build    # checagem de tipos (tsc) + build de produção em dist/
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+O gateway precisa estar no ar (veja o README da raiz). Para apontar para outro gateway: `VITE_GATEWAY_URL=http://host:porta npm run dev`.
+
+## Organização
+
+```
+src/
+  lib/          api.ts (cliente HTTP + tokens), auth.tsx, queries.ts (dados), tipos, formatação, validação
+  components/   ui.tsx (botões, campos, modal, avisos), Layout.tsx (menu), guards.tsx (rotas protegidas)
+  pages/        uma tela por arquivo
+  test/         ajudantes de teste
+```
+
+## Decisões que valem saber
+
+- **Mesma origem**: o código só chama caminhos relativos (`/api/...`). Em dev o Vite faz o proxy; em produção o nginx. Sem CORS.
+- **Tokens**: access token só em memória; refresh token no `sessionStorage`. A renovação é *single-flight* (veja `lib/api.ts`):
+  várias requisições com 401 ao mesmo tempo compartilham UMA renovação, porque o servidor trata o reuso de um refresh token
+  antigo como roubo e derruba a sessão.
+- **Papéis na interface são conveniência**: quem protege de verdade é o servidor.
+- **Conteúdo de usuários sempre como texto** (nunca `dangerouslySetInnerHTML`); o nginx ainda aplica uma CSP restritiva.
