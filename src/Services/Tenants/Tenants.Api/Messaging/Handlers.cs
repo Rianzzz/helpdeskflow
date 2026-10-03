@@ -38,7 +38,7 @@ public class TenantRegisteredHandler(TenantsDbContext db, IEventPublisher events
             var profile = TenantProfile.CreateFree(e.TenantId, e.CompanyName);
             db.Profiles.Add(profile);
             db.OnboardingStates.Add(OnboardingState.Decide(e.TenantId, e.CompanyName, OnboardingOutcome.Provisioned));
-            await events.PublishAsync(TenantProvisioned.Create(e.TenantId, profile.Plan.ToString()));
+            await events.PublishAsync(TenantProvisioned.Create(e.TenantId, profile.Plan.ToString(), profile.MaxUsers));
             logger.LogInformation("Empresa {Name} ({TenantId}) provisionada no plano {Plan}.", profile.Name, e.TenantId, profile.Plan);
         }
         else

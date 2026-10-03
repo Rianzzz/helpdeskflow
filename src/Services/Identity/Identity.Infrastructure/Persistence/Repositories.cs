@@ -26,6 +26,9 @@ public class TenantRepository(IdentityDbContext db) : ITenantRepository
     public Task<Tenant?> GetByIdAsync(Guid id, CancellationToken ct) =>
         db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id, ct);
 
+    public Task<Tenant?> GetTrackedByIdAsync(Guid id, CancellationToken ct) =>
+        db.Tenants.FirstOrDefaultAsync(t => t.Id == id, ct);
+
     public async Task AddAsync(Tenant tenant, CancellationToken ct) => await db.Tenants.AddAsync(tenant, ct);
 }
 

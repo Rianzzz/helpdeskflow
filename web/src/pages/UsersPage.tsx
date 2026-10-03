@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react'
-import { Badge, Button, Card, EmptyState, ErrorBlock, Input, LoadingBlock, Modal, PageHeader, Select, useToast } from '../components/ui'
+import { Alert, Badge, Button, Card, EmptyState, ErrorBlock, Input, LoadingBlock, Modal, PageHeader, Select, useToast } from '../components/ui'
 import { ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { errorMessage, roleLabel } from '../lib/format'
-import { useCreateUser, useUsers } from '../lib/queries'
+import { planUsage, usersLabel } from '../lib/plan'
+import { useCreateUser, useTenantProfile, useUsers } from '../lib/queries'
 import type { Role } from '../lib/types'
 import { passwordProblem } from '../lib/validation'
 
@@ -12,15 +13,31 @@ const roleTone = { Admin: 'brand', Agent: 'sky', Customer: 'slate' } as const
 export function UsersPage() {
   const { user: me } = useAuth()
   const users = useUsers()
+  const profile = useTenantProfile()
   const [creating, setCreating] = useState(false)
+
+  // Uso do plano: só dá para afirmar quando já temos a lista e o perfil (que traz o limite do plano).
+  const usage = users.data && profile.data ? planUsage(users.data.length, profile.data.maxUsers) : null
 
   return (
     <>
       <PageHeader
         title="Usuários"
-        subtitle="Quem tem acesso à sua empresa."
-        actions={<Button onClick={() => setCreating(true)}>Novo usuário</Button>}
+        subtitle={usage ? `${usage.used} de ${usage.limit} usuários do plano ${profile.data?.plan}.` : 'Quem tem acesso à sua empresa.'}
+        actions={
+          <Button onClick={() => setCreating(true)} disabled={usage?.isFull} aria-describedby={usage?.isFull ? 'plan-full' : undefined}>
+            Novo usuário
+          </Button>
+        }
       />
+
+      {usage?.isFull && (
+        <div id="plan-full" className="mb-4">
+          <Alert tone="amber">
+            Limite do plano atingido: {usersLabel(usage.limit)}. Para adicionar mais pessoas, faça upgrade do plano.
+          </Alert>
+        </div>
+      )}
 
       <Card>
         {users.isPending ? (

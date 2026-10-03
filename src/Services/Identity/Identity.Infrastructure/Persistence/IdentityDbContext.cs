@@ -27,6 +27,8 @@ public class IdentityDbContext(DbContextOptions<IdentityDbContext> options) : Db
             // O status também é o "token de concorrência": se a saga (Activate) e o timeout (Fail) agirem ao mesmo
             // tempo sobre a mesma empresa, o segundo a salvar recebe um erro de concorrência em vez de sobrescrever.
             e.Property(t => t.Status).HasConversion<string>().HasMaxLength(20).IsConcurrencyToken();
+            // O contador de vagas também protege contra corrida: dois cadastros de usuário simultâneos não furam o limite.
+            e.Property(t => t.UserCount).IsConcurrencyToken();
         });
 
         b.Entity<User>(e =>
@@ -64,6 +66,12 @@ public class IdentityDbContext(DbContextOptions<IdentityDbContext> options) : Db
         {
             // Dois cadastros simultâneos com o mesmo e-mail: o índice único do banco é a palavra final.
             throw new ConflictException("E-mail já cadastrado.");
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Outra requisição alterou a MESMA empresa no mesmo instante (ex.: duas pessoas adicionando o último usuário
+            // do plano). Quem chegou depois recebe um erro claro, em vez de os dois passarem e estourarem o limite.
+            throw new ConflictException("Outra alteração aconteceu ao mesmo tempo. Tente novamente.");
         }
     }
 }

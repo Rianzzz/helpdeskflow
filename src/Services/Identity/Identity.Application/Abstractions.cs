@@ -16,6 +16,10 @@ public interface IUserRepository
 public interface ITenantRepository
 {
     Task<Tenant?> GetByIdAsync(Guid id, CancellationToken ct);
+
+    /// <summary>Versão RASTREADA (para alterar e salvar). A de leitura acima não rastreia.</summary>
+    Task<Tenant?> GetTrackedByIdAsync(Guid id, CancellationToken ct);
+
     Task AddAsync(Tenant tenant, CancellationToken ct);
 }
 
@@ -57,6 +61,10 @@ public interface ITokenService
 }
 
 public class ConflictException(string message) : Exception(message);
+
+/// <summary>O plano da empresa não comporta mais usuários. Vira HTTP 409 com a mensagem para o administrador.</summary>
+public class PlanLimitExceededException(int maxUsers)
+    : ConflictException($"Limite de usuários do plano atingido ({maxUsers}). Faça upgrade do plano para adicionar mais pessoas.");
 
 /// <summary>Credenciais inválidas, conta bloqueada, token expirado... A mensagem é sempre genérica de propósito.</summary>
 public class AuthenticationFailedException()

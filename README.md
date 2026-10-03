@@ -118,6 +118,25 @@ Tickets ──TicketCreated/Assigned/Resolved──► Notifications (grava a no
 > MassTransit foi evitado de propósito: a v9 passou a ser comercial. Usamos `RabbitMQ.Client` direto,
 > o que também ajuda a entender o que acontece por baixo.
 
+### Limites do plano (SaaS de verdade)
+
+Cada empresa tem um plano com limites; hoje o **Free** comporta **5 usuários** (o administrador conta como um). Quem DEFINE o
+plano é o serviço Tenants; quem APLICA é o Identity, que é quem cadastra pessoas:
+
+```
+Tenants decide o plano ──TenantProvisioned{ plano, maxUsers }──► Identity guarda o limite e passa a reservar uma vaga a cada usuário
+```
+
+- O limite viaja **no evento** (sem o Identity consultar o Tenants a cada cadastro: se o Tenants cair, os cadastros continuam)
+- **À prova de corrida**: o contador de vagas da empresa é *token de concorrência* e é salvo na mesma transação do usuário.
+  Seis cadastros simultâneos disputando a última vaga deixam passar **exatamente um**; os outros recebem `409` (teste de integração
+  contra PostgreSQL real). Violação do limite responde `409` com mensagem para o administrador, nunca `500`
+- A interface mostra o uso ("4 de 5 usuários"), bloqueia "Novo usuário" quando o plano lota e explica o motivo, e a tela de
+  Empresa tem uma barra de uso (acessível: `role="progressbar"`). Esconder o botão não é a proteção: o servidor recusa de qualquer forma
+- A migration preserva os dados existentes: empresas ativas recebem o limite do Free e o contador reflete os usuários reais
+- Próximo passo natural: eventos de mudança de plano (`TenantPlanChanged`) e cobrança; o desenho já comporta, porque o limite é um dado
+  que o Identity recebe, não uma regra fixa no código
+
 ### Notificações em tempo real (SignalR)
 
 O Notifications hospeda um hub (`/hubs/notifications`): assim que uma notificação é gravada, o servidor a **empurra** para o
@@ -196,8 +215,8 @@ adulterado/forjado, bloqueio de conta, reuso de refresh token, idempotência, DL
 **Front-end** (`web/`):
 
 ```
-npm test                  # Vitest + Testing Library (52 testes: cliente de API, guardas de rota, formulários, ações por papel)
-npm run e2e               # Playwright: navegador de verdade contra a plataforma em contêineres (36 testes)
+npm test                  # Vitest + Testing Library (85 testes: cliente de API, tempo real, guardas de rota, formulários, plano)
+npm run e2e               # Playwright: navegador de verdade contra a plataforma em contêineres (48 testes)
 ```
 
 Os testes de navegador (Playwright) abrem o app em `http://localhost:3000` e cobrem: cadastro com acompanhamento da saga

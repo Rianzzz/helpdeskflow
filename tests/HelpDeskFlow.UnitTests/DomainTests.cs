@@ -203,9 +203,40 @@ public class TenantTests
     {
         var t = Tenant.Create("Acme");
 
-        t.Activate();
+        t.Activate(5);
 
         Assert.True(t.IsActive);
+    }
+
+    [Fact]
+    public void New_tenant_already_counts_its_admin_and_has_no_room_until_the_plan_arrives()
+    {
+        var t = Tenant.Create("Acme");
+
+        Assert.Equal(1, t.UserCount); // o administrador criado junto
+        Assert.Equal(0, t.MaxUsers);
+        Assert.False(t.TryReserveUserSlot()); // empresa ainda em provisionamento: nada de novos usuários
+    }
+
+    [Fact]
+    public void Activation_applies_the_plan_limit_and_slots_run_out_exactly_at_the_limit()
+    {
+        var t = Tenant.Create("Acme");
+        t.Activate(3); // admin (1) + 2 vagas
+
+        Assert.True(t.TryReserveUserSlot());
+        Assert.True(t.TryReserveUserSlot());
+        Assert.False(t.TryReserveUserSlot()); // o 4º não cabe
+        Assert.Equal(3, t.UserCount);
+    }
+
+    [Fact]
+    public void A_failed_tenant_never_hands_out_slots()
+    {
+        var t = Tenant.Create("Acme");
+        t.Fail("nome duplicado");
+
+        Assert.False(t.TryReserveUserSlot());
     }
 
     [Fact]

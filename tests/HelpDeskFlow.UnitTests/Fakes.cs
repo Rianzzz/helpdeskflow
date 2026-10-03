@@ -54,6 +54,7 @@ public class FakeTenantRepository : ITenantRepository
     public List<Tenant> Items { get; } = [];
 
     public Task<Tenant?> GetByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(t => t.Id == id));
+    public Task<Tenant?> GetTrackedByIdAsync(Guid id, CancellationToken ct) => GetByIdAsync(id, ct);
     public Task AddAsync(Tenant tenant, CancellationToken ct) { Items.Add(tenant); return Task.CompletedTask; }
 }
 

@@ -27,7 +27,7 @@ public class TenantProvisionedHandler(IdentityDbContext db, IEventPublisher even
         var admin = await db.Users.Where(u => u.TenantId == tenant.Id && u.Role == UserRole.Admin)
             .OrderBy(u => u.CreatedAt).FirstAsync(ct);
 
-        tenant.Activate();
+        tenant.Activate(e.MaxUsers);
         await events.PublishAsync(UserRegistered.Create(tenant.Id, admin.Id, admin.Name, admin.Email, admin.Role.ToString()));
         await events.PublishAsync(TenantActivated.Create(tenant.Id, tenant.Name, admin.Id, admin.Name, admin.Email));
         await db.SaveChangesAsync(ct);

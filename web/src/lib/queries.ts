@@ -86,7 +86,8 @@ export function useMarkRead() {
   })
 }
 
-export const useUsers = () => useQuery({ queryKey: keys.users, queryFn: () => api<User[]>('/api/users') })
+export const useUsers = (enabled = true) =>
+  useQuery({ queryKey: keys.users, queryFn: () => api<User[]>('/api/users'), enabled })
 
 export function useCreateUser() {
   const qc = useQueryClient()

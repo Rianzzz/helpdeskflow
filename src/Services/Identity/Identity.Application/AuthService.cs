@@ -143,10 +143,16 @@ public class AuthService(
         if (await users.EmailExistsAsync(email, ct))
             throw new ConflictException("E-mail já cadastrado.");
 
+        // LIMITE DO PLANO: reserva uma vaga na empresa. O contador vai no mesmo SaveChanges do usuário e é token de
+        // concorrência: se duas pessoas tentarem ocupar a última vaga juntas, só uma salva (a outra recebe 409).
+        var tenant = await tenants.GetTrackedByIdAsync(tenantId, ct) ?? throw new AuthenticationFailedException();
+        if (!tenant.TryReserveUserSlot())
+            throw new PlanLimitExceededException(tenant.MaxUsers);
+
         var user = User.Create(tenantId, request.Name, email, hasher.Hash(request.Password), request.Role);
         await users.AddAsync(user, ct);
         await StageUserRegisteredAsync(user);
-        await unitOfWork.SaveChangesAsync(ct); // usuário + evento na mesma transação (Outbox)
+        await unitOfWork.SaveChangesAsync(ct); // usuário + vaga + evento na mesma transação (Outbox)
         return UserResponse.From(user);
     }
 

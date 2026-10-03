@@ -18,6 +18,15 @@ public class Tenant
     public string? FailureReason { get; private set; }
     public DateTime CreatedAt { get; private set; }
 
+    /// <summary>Limite de usuários do plano da empresa. Vem do serviço Tenants (dono do plano) pelo evento TenantProvisioned.</summary>
+    public int MaxUsers { get; private set; }
+
+    /// <summary>
+    /// Vagas de usuário já usadas. É também o TOKEN DE CONCORRÊNCIA da empresa: dois cadastros simultâneos leem o mesmo
+    /// valor e tentam salvar; o segundo falha (em vez de os dois passarem e estourarem o limite do plano).
+    /// </summary>
+    public int UserCount { get; private set; }
+
     public bool IsActive => Status == TenantStatus.Active;
 
     private Tenant() { }
@@ -27,10 +36,24 @@ public class Tenant
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 150)
             throw new DomainException("Nome da empresa inválido (obrigatório, até 150 caracteres).");
 
-        return new Tenant { Id = Guid.NewGuid(), Name = name.Trim(), Status = TenantStatus.Provisioning, CreatedAt = DateTime.UtcNow };
+        // UserCount = 1: o administrador criado junto com a empresa já ocupa uma vaga.
+        return new Tenant { Id = Guid.NewGuid(), Name = name.Trim(), Status = TenantStatus.Provisioning, UserCount = 1, CreatedAt = DateTime.UtcNow };
     }
 
-    public void Activate() => Status = TenantStatus.Active;
+    public void Activate(int maxUsers)
+    {
+        Status = TenantStatus.Active;
+        MaxUsers = maxUsers;
+    }
+
+    /// <summary>Reserva uma vaga de usuário no plano. Devolve false se o plano já está cheio.</summary>
+    public bool TryReserveUserSlot()
+    {
+        if (!IsActive || UserCount >= MaxUsers) return false;
+
+        UserCount++;
+        return true;
+    }
 
     public void Fail(string reason)
     {

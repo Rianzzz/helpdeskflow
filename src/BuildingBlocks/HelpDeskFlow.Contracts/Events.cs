@@ -86,13 +86,16 @@ public record TenantRegistered(
         new(EventIds.FromKey($"tenant-registered:{tenantId}"), DateTime.UtcNow, tenantId, companyName, adminUserId, adminName, adminEmail);
 }
 
-/// <summary>Tenants → Identity: perfil e plano criados; a empresa pode ser ativada.</summary>
-public record TenantProvisioned(Guid EventId, DateTime OccurredAt, Guid TenantId, string Plan) : IIntegrationEvent
+/// <summary>
+/// Tenants → Identity: perfil e plano criados; a empresa pode ser ativada. Leva o LIMITE de usuários do plano: o Tenants
+/// é o dono do plano, e o Identity (que cadastra os usuários) o aplica sem precisar consultar ninguém a cada cadastro.
+/// </summary>
+public record TenantProvisioned(Guid EventId, DateTime OccurredAt, Guid TenantId, string Plan, int MaxUsers) : IIntegrationEvent
 {
     public static string EventName => "tenants.tenant-provisioned";
 
-    public static TenantProvisioned Create(Guid tenantId, string plan) =>
-        new(EventIds.FromKey($"tenant-provisioned:{tenantId}"), DateTime.UtcNow, tenantId, plan);
+    public static TenantProvisioned Create(Guid tenantId, string plan, int maxUsers) =>
+        new(EventIds.FromKey($"tenant-provisioned:{tenantId}"), DateTime.UtcNow, tenantId, plan, maxUsers);
 }
 
 /// <summary>Tenants → Identity/Notifications: o provisionamento foi recusado; é preciso COMPENSAR (desfazer) o cadastro.</summary>

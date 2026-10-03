@@ -30,10 +30,10 @@ public class AuthServiceTests
     }
 
     /// <summary>Cria uma empresa já ATIVA com um usuário, como se a saga tivesse concluído.</summary>
-    private async Task<User> SeedActiveUserAsync(string email = "ana@acme.com", UserRole role = UserRole.Agent)
+    private async Task<User> SeedActiveUserAsync(string email = "ana@acme.com", UserRole role = UserRole.Agent, int maxUsers = 5)
     {
         var tenant = Tenant.Create("Acme");
-        tenant.Activate();
+        tenant.Activate(maxUsers);
         _tenants.Items.Add(tenant);
         var user = User.Create(tenant.Id, "Ana", email, _hasher.Hash(Password), role);
         await _users.AddAsync(user, default);
@@ -230,6 +230,35 @@ public class AuthServiceTests
         var evt = Assert.Single(_events.Of<UserRegistered>());
         Assert.Equal("Customer", evt.Role);
         Assert.Equal(admin.TenantId, evt.TenantId);
+    }
+
+    [Fact]
+    public async Task Creating_users_stops_exactly_at_the_plan_limit()
+    {
+        var admin = await SeedActiveUserAsync(role: UserRole.Admin, maxUsers: 3); // admin (1) + 2 vagas
+
+        await _sut.CreateUserAsync(admin.TenantId, new("Um", "um@acme.com", Password, UserRole.Agent), default);
+        await _sut.CreateUserAsync(admin.TenantId, new("Dois", "dois@acme.com", Password, UserRole.Customer), default);
+        var blocked = await Assert.ThrowsAsync<PlanLimitExceededException>(() =>
+            _sut.CreateUserAsync(admin.TenantId, new("Tres", "tres@acme.com", Password, UserRole.Customer), default));
+
+        Assert.Contains("(3)", blocked.Message);
+        Assert.Contains("upgrade", blocked.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.IsAssignableFrom<ConflictException>(blocked); // vira HTTP 409
+    }
+
+    [Fact]
+    public async Task A_blocked_creation_saves_nothing_and_announces_nothing()
+    {
+        var admin = await SeedActiveUserAsync(role: UserRole.Admin, maxUsers: 1); // só o admin cabe
+        var usersBefore = _users.Items.Count;
+        _timeline.Entries.Clear();
+
+        await Assert.ThrowsAsync<PlanLimitExceededException>(() =>
+            _sut.CreateUserAsync(admin.TenantId, new("Extra", "extra@acme.com", Password, UserRole.Agent), default));
+
+        Assert.Equal(usersBefore, _users.Items.Count);
+        Assert.Empty(_timeline.Entries); // nem gravou, nem publicou UserRegistered
     }
 
     [Fact]
