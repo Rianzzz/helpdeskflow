@@ -17,6 +17,22 @@ builder.WebHost.ConfigureKestrel(o =>
     o.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(15);
 });
 
+// ---- IP real do cliente atrás do nginx do front-end ----
+// O nginx repassa o IP do cliente em X-Forwarded-For. Aceitamos esse cabeçalho SÓ de proxies confiáveis (por padrão,
+// loopback; em contêineres informe a rede privada em ForwardedHeaders:KnownNetworks). Sem isso, o rate limit por IP
+// trataria todos os usuários como um só: o IP do nginx.
+builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(o =>
+{
+    o.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+                         | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+
+    foreach (var cidr in builder.Configuration.GetSection("ForwardedHeaders:KnownNetworks").Get<string[]>() ?? [])
+    {
+        var parts = cidr.Split('/');
+        o.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(System.Net.IPAddress.Parse(parts[0]), int.Parse(parts[1])));
+    }
+});
+
 // ---- Autenticação: o gateway valida o JWT ANTES de encaminhar ----
 // Os serviços continuam validando também (defesa em profundidade): se alguém acessar um serviço
 // direto, sem passar pelo gateway, ele continua protegido.
@@ -71,6 +87,7 @@ builder.Services.AddCors(o => o.AddPolicy("web", p =>
 builder.Services.AddReverseProxy().LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
 var app = builder.Build();
+app.UseForwardedHeaders();
 app.UseHelpDeskObservability(); // correlation id + log de requisições
 
 // Em produção o TLS normalmente termina no proxy/ingress NA FRENTE do gateway; nesse caso defina "Https:Redirect" = false.

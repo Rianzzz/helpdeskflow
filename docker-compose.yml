@@ -5,7 +5,8 @@
 #
 #   Plataforma COMPLETA em contêineres (precisa de um .env: veja .env.example):
 #       docker compose --profile apps up -d --build
-#       -> API em http://localhost:5000 (só o gateway é exposto; os serviços ficam numa rede privada)
+#       -> Front-end em http://localhost:3000 (nginx; repassa /api ao gateway)
+#       -> API em http://localhost:5000 (gateway). Os demais serviços ficam numa rede privada, sem portas expostas
 #
 #   Visualizador de traces (opcional):
 #       docker compose --profile observability up -d jaeger     -> http://localhost:16686
@@ -147,6 +148,8 @@ services:
       <<: *app-environment
       # TLS termina no proxy/ingress na frente do gateway; aqui falamos HTTP puro.
       Https__Redirect: "false"
+      # Confia no X-Forwarded-For do nginx (front-end) que está nesta rede privada.
+      ForwardedHeaders__KnownNetworks__0: 172.28.0.0/16
       RateLimiting__AuthPermitPerMinute: ${AUTH_RATE_LIMIT_PER_MINUTE:-10}
       # Nomes de serviço do Docker substituem os "localhost" do appsettings.json.
       ReverseProxy__Clusters__identity__Destinations__identity-1__Address: http://identity:8080/
@@ -161,6 +164,23 @@ services:
     ports:
       - "5000:8080"   # ÚNICA porta de aplicação exposta ao host
     healthcheck: *app-healthcheck
+    restart: unless-stopped
+    networks: [helpdesk]
+
+  web:
+    profiles: ["apps"]
+    build: { context: ./web }
+    image: helpdeskflow/web:local
+    depends_on:
+      gateway: { condition: service_healthy }
+    ports:
+      - "3000:8080"   # front-end (nginx): http://localhost:3000. Repassa /api para o gateway
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
     restart: unless-stopped
     networks: [helpdesk]
 

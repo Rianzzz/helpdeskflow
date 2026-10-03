@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Teste de fumaça da plataforma COMPLETA, pelo gateway: cadastro de empresa (saga), login, chamado e notificação.
 #
-#   ./scripts/smoke-test.sh [URL_DO_GATEWAY]      (padrão: http://localhost:5000)
+#   ./scripts/smoke-test.sh [URL_DO_GATEWAY] [URL_DO_FRONT]
+#       padrões: http://localhost:5000  e  (sem front: só testa a API)
+#   Se a URL do front for informada (ex.: http://localhost:3000), também valida o nginx: SPA, proxy da API e cabeçalhos.
 #
 # Sai com código diferente de zero se qualquer etapa falhar (usado no CI).
 set -euo pipefail
 
-BASE="${1:-http://localhost:5000}/api"
+GATEWAY="${1:-http://localhost:5000}"
+WEB="${2:-}"
+BASE="$GATEWAY/api"
 SUFFIX="$RANDOM$RANDOM"
 JSON='Content-Type: application/json'
 PASSWORD='senhaForte123'
@@ -25,7 +29,7 @@ wait_until() { # descrição, tentativas, comando...
 }
 
 step "Gateway saudável"
-curl -fsS "$BASE/../health" >/dev/null || fail "gateway não respondeu em $BASE/../health"
+curl -fsS "$GATEWAY/health" >/dev/null || fail "gateway não respondeu em $GATEWAY/health"
 
 step "Sem token é negado (401)"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/tickets")
@@ -69,5 +73,25 @@ step "Cliente NÃO pode resolver chamados (403)"
 ID=$(curl -fsS "$BASE/tickets" -H "Authorization: Bearer $CUSTOMER_TOKEN" | field id)
 code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$BASE/tickets/$ID/resolve" -H "Authorization: Bearer $CUSTOMER_TOKEN")
 [ "$code" = 403 ] || fail "esperava 403, veio $code"
+
+if [ -n "$WEB" ]; then
+  step "Front-end (nginx): página inicial e rota do React Router (fallback para index.html)"
+  curl -fsS "$WEB/" | grep -q '<div id="root">' || fail "index.html do front não foi servido em $WEB/"
+  curl -fsS "$WEB/tickets/qualquer-id" | grep -q '<div id="root">' || fail "fallback de SPA não funcionou"
+
+  step "Front-end: cabeçalhos de segurança (CSP restritiva, nosniff, sem versão do nginx)"
+  headers=$(curl -fsS -D - -o /dev/null "$WEB/")
+  echo "$headers" | grep -qi "^content-security-policy:.*script-src 'self'" || fail "CSP ausente ou frouxa"
+  echo "$headers" | grep -qi "^x-content-type-options: nosniff" || fail "nosniff ausente"
+  echo "$headers" | grep -qi "^x-frame-options: DENY" || fail "X-Frame-Options ausente"
+  if echo "$headers" | grep -qiE "^server: nginx/[0-9]"; then fail "o nginx está anunciando a versão"; fi
+
+  step "Front-end: /api passa pelo nginx até o gateway (401 sem token; login funciona pela origem do front)"
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$WEB/api/tickets")
+  [ "$code" = 401 ] || fail "esperava 401 em $WEB/api/tickets, veio $code"
+  VIA_WEB_TOKEN=$(curl -fsS -X POST "$WEB/api/auth/login" -H "$JSON" \
+    -d "{\"email\":\"admin$SUFFIX@smoke.test\",\"password\":\"$PASSWORD\"}" | field accessToken)
+  [ -n "$VIA_WEB_TOKEN" ] || fail "login pela origem do front falhou"
+fi
 
 printf '\n✓ Smoke test passou: saga de onboarding, autenticação, isolamento, eventos e notificações funcionando.\n'

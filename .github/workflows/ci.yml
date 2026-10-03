@@ -51,6 +51,37 @@ jobs:
           path: "**/TestResults/*.trx"
           if-no-files-found: ignore
 
+  web:
+    name: Front-end (lint, testes, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Instalar dependências (exatamente as do package-lock.json)
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes
+        run: npm test
+
+      - name: Build de produção (inclui a checagem de tipos do TypeScript)
+        run: npm run build
+
+      - name: Auditoria de dependências (falha em vulnerabilidade alta ou crítica)
+        run: npm audit --audit-level=high
+
   dependency-audit:
     name: Pacotes vulneráveis
     runs-on: ubuntu-latest
@@ -74,7 +105,7 @@ jobs:
     name: Imagens Docker + teste de fumaça
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    needs: build-and-test
+    needs: [build-and-test, web]
     steps:
       - uses: actions/checkout@v5
 
@@ -84,8 +115,8 @@ jobs:
       - name: Construir imagens e subir a plataforma completa
         run: docker compose --profile apps up -d --build --wait --wait-timeout 300
 
-      - name: Teste de fumaça pelo gateway
-        run: bash scripts/smoke-test.sh http://localhost:5000
+      - name: Teste de fumaça (API pelo gateway e front-end pelo nginx)
+        run: bash scripts/smoke-test.sh http://localhost:5000 http://localhost:3000
 
       - name: Logs dos contêineres (se algo falhou)
         if: failure()

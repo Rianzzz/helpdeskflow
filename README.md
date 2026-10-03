@@ -11,7 +11,7 @@ cp .env.example .env        # defina JWT_SIGNING_KEY (obrigatória) e, se quiser
 docker compose --profile apps up -d --build
 ```
 
-A API fica em **http://localhost:5000** (gateway). Os serviços ficam numa rede Docker privada e **não** são expostos ao host.
+O **front-end** fica em **http://localhost:3000** (nginx, que repassa `/api` ao gateway) e a API em **http://localhost:5000** (gateway). Os demais serviços ficam numa rede Docker privada e **não** são expostos ao host.
 As migrations rodam sozinhas na primeira subida (`Database__MigrateOnStartup`). Para acompanhar os traces:
 `docker compose --profile observability up -d jaeger` e defina `OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317` no `.env`.
 
@@ -37,6 +37,18 @@ healthcheck em `/health/live`).
    ```
    > Na primeira vez, suba Tickets e Notifications **antes** de gerar eventos: cada serviço cria suas filas ao iniciar.
 
+### Front-end em desenvolvimento
+
+Com a plataforma no ar (Opção A ou B), em outro terminal:
+
+```
+cd web
+npm install
+npm run dev          # http://localhost:5173 (o Vite repassa /api para o gateway em localhost:5000)
+npm test             # testes (Vitest + Testing Library)
+npm run lint && npm run build
+```
+
 ### Usando a API
 
 Use **sempre o gateway** (`http://localhost:5000`). Teste com os arquivos `*.http` (VS Code com REST Client, ou Visual Studio).
@@ -48,6 +60,7 @@ Fluxo: registrar empresa → acompanhar o status até `Active` → login → usa
 ## Estrutura
 
 ```
+web/                                   front-end React + TypeScript (Vite, Tailwind, TanStack Query)
 src/Gateway/Gateway.Api                API Gateway (YARP): entrada única, segurança de borda
 src/BuildingBlocks/HelpDeskFlow.Auth   contrato compartilhado: papéis, claims, validação de JWT
 src/BuildingBlocks/HelpDeskFlow.Contracts            eventos de integração + interfaces (sem dependências)
@@ -156,16 +169,32 @@ dotnet test tests/HelpDeskFlow.IntegrationTests   # precisa do Docker: sobe Post
 Os testes de integração exercitam a plataforma de verdade (saga de onboarding, isolamento entre empresas e papéis, JWT
 adulterado/forjado, bloqueio de conta, reuso de refresh token, idempotência, DLQ, job de SLA).
 
+### Front-end (`web/`)
+
+React 19 + TypeScript + Vite, Tailwind CSS, React Router e TanStack Query. Telas: cadastro de empresa (com o acompanhamento
+da **saga** em tempo quase real), login, chamados (filtros, busca, criação, detalhe com ações por papel), notificações
+(com contador no menu), usuários (Admin) e dados da empresa. Responsivo e acessível (rótulos, foco, `<dialog>`, `aria-live`).
+
+- **Mesma origem**: o navegador só fala com `/api` (Vite em dev, nginx em produção): sem CORS e sem URL de API no código
+- **Tokens**: o access token (15 min) fica **só em memória**; o refresh token no `sessionStorage` (por aba). A renovação é
+  *single-flight*: várias requisições com 401 compartilham UMA renovação, senão a detecção de reuso do servidor derrubaria a sessão.
+  Próximo passo de endurecimento: cookie `httpOnly` via BFF
+- **XSS**: o React escapa todo conteúdo (a descrição dos chamados é exibida como texto, nunca como HTML) e o nginx aplica uma
+  **CSP restritiva** (`script-src 'self'`), além de `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy` e `Permissions-Policy`
+- **Papéis na tela são só conveniência**: botões escondidos não protegem nada; o servidor valida o papel do token em cada chamada
+- Imagem Docker de ~80 MB (build em Node, servida por nginx **sem root**)
+
 ### CI/CD (GitHub Actions)
 
 `.github/workflows/ci.yml` roda a cada push e pull request, com permissão mínima (`contents: read`):
 
+0. **Front-end**: `npm ci`, lint, testes, build de produção (com checagem de tipos) e `npm audit`
 1. **Build e testes**: compila em Release, roda os testes unitários e os de integração (Testcontainers; o runner já tem Docker)
 2. **Pacotes vulneráveis**: `dotnet list package --vulnerable --include-transitive` e falha se achar algum
-3. **Imagens Docker + teste de fumaça**: constrói as 5 imagens, sobe a plataforma completa com `docker compose --profile apps`
+3. **Imagens Docker + teste de fumaça**: constrói as 6 imagens (5 serviços e o front), sobe a plataforma completa com `docker compose --profile apps`
    (segredos efêmeros gerados na hora) e roda `scripts/smoke-test.sh` pelo gateway (saga de onboarding, login, chamado, notificação)
 
-O mesmo teste de fumaça serve localmente: `./scripts/smoke-test.sh http://localhost:5000`.
+O mesmo teste de fumaça serve localmente: `./scripts/smoke-test.sh http://localhost:5000 http://localhost:3000` (o segundo argumento, opcional, valida também o nginx: SPA, proxy da API e cabeçalhos).
 
 ### Gateway (borda)
 
