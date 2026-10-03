@@ -107,8 +107,10 @@ test.describe('Notificações em tempo real (SignalR)', () => {
     await loginViaUi(page, company.admin.email)
     await expect(live(page)).toHaveAttribute('data-status', 'connected')
 
-    // O Playwright roda a partir de web/: a raiz do repositório (onde está o docker-compose.yml) é a pasta acima.
-    execSync('docker compose --profile apps restart notifications', { cwd: path.resolve(process.cwd(), '..'), stdio: 'ignore' })
+    // Como reiniciar o serviço depende de ONDE a plataforma roda. Padrão: docker compose (a raiz do repositório, onde está o
+    // docker-compose.yml, é a pasta acima de web/). No Kubernetes: E2E_RESTART_NOTIFICATIONS_CMD="kubectl -n helpdeskflow rollout restart deploy/notifications".
+    const restart = process.env.E2E_RESTART_NOTIFICATIONS_CMD ?? 'docker compose --profile apps restart notifications'
+    execSync(restart, { cwd: path.resolve(process.cwd(), '..'), stdio: 'ignore' })
 
     await expect(live(page)).toHaveAttribute('data-status', 'connected', { timeout: 100_000 })
     const title = `Depois do reinício ${uid()}`

@@ -30,6 +30,15 @@ builder.Services.AddEventHandler<TenantRegistered, TenantRegisteredHandler>();
 builder.Services.AddEventHandler<TenantRegistrationExpired, TenantRegistrationExpiredHandler>();
 
 var app = builder.Build();
+
+// Modo "só migrar": usado como initContainer/Job no Kubernetes. Aplica as migrations e ENCERRA com sucesso, sem subir o
+// servidor nem os consumidores. Várias réplicas podem rodar isto ao mesmo tempo: o EF Core usa um lock no banco.
+if (args.Contains("--migrate-only"))
+{
+    using var migrationScope = app.Services.CreateScope();
+    await migrationScope.ServiceProvider.GetRequiredService<TenantsDbContext>().Database.MigrateAsync();
+    return;
+}
 app.UseHelpDeskObservability();
 
 app.UseExceptionHandler(h => h.Run(async ctx =>

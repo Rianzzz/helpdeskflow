@@ -1,4 +1,4 @@
-﻿using HelpDeskFlow.Observability;
+using HelpDeskFlow.Observability;
 using System.Security.Claims;
 using HelpDeskFlow.Auth;
 using HelpDeskFlow.Contracts;
@@ -47,6 +47,15 @@ builder.Services.AddEventHandler<TenantActivated, TenantActivatedHandler>();
 builder.Services.AddEventHandler<TenantProvisioningFailed, TenantProvisioningFailedHandler>();
 
 var app = builder.Build();
+
+// Modo "só migrar": usado como initContainer/Job no Kubernetes. Aplica as migrations e ENCERRA com sucesso, sem subir o
+// servidor nem os consumidores. Várias réplicas podem rodar isto ao mesmo tempo: o EF Core usa um lock no banco.
+if (args.Contains("--migrate-only"))
+{
+    using var migrationScope = app.Services.CreateScope();
+    await migrationScope.ServiceProvider.GetRequiredService<NotificationsDbContext>().Database.MigrateAsync();
+    return;
+}
 app.UseHelpDeskObservability();
 
 app.UseExceptionHandler(h => h.Run(async ctx =>
