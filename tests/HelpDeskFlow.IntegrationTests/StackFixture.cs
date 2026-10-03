@@ -79,12 +79,22 @@ public sealed class StackFixture : IAsyncLifetime
     public async Task DisposeAsync()
     {
         foreach (var c in new[] { Identity, Tickets, Tenants, Notifications }) c?.Dispose();
-        if (_identity is not null) await _identity.DisposeAsync();
-        if (_tenants is not null) await _tenants.DisposeAsync();
-        if (_tickets is not null) await _tickets.DisposeAsync();
-        if (_notifications is not null) await _notifications.DisposeAsync();
-        await _rabbit.DisposeAsync();
-        await _postgres.DisposeAsync();
+
+        // Limpeza tolerante: o xUnit trata QUALQUER exceção aqui como falha da coleção inteira (marcando todos os testes
+        // como reprovados, mesmo depois de terem passado). Um erro ao desligar o ambiente não diz nada sobre o sistema.
+        foreach (var dispose in new Func<ValueTask>?[]
+                 {
+                     _identity is null ? null : _identity.DisposeAsync,
+                     _tenants is null ? null : _tenants.DisposeAsync,
+                     _tickets is null ? null : _tickets.DisposeAsync,
+                     _notifications is null ? null : _notifications.DisposeAsync,
+                     _rabbit.DisposeAsync,
+                     _postgres.DisposeAsync,
+                 })
+        {
+            if (dispose is null) continue;
+            try { await dispose(); } catch (Exception) { /* ignora erro de desligamento */ }
+        }
     }
 
     private static void Env(string key, string value) => Environment.SetEnvironmentVariable(key, value);

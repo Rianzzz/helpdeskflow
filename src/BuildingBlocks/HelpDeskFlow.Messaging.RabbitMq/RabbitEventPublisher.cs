@@ -70,7 +70,15 @@ public sealed class RabbitEventPublisher(RabbitConnection connection, ILogger<Ra
 
     public async ValueTask DisposeAsync()
     {
-        if (_channel is not null) await _channel.DisposeAsync();
+        try
+        {
+            if (_channel is not null) await _channel.DisposeAsync();
+        }
+        catch (Exception)
+        {
+            // Mesmo raciocínio da conexão: erro ao fechar o canal no desligamento não é acionável.
+        }
+
         _lock.Dispose();
     }
 }

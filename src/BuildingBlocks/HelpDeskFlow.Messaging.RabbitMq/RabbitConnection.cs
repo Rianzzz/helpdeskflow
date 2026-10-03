@@ -65,7 +65,17 @@ public sealed class RabbitConnection(IOptions<MessagingOptions> options) : IAsyn
 
     public async ValueTask DisposeAsync()
     {
-        if (_connection is not null) await _connection.DisposeAsync();
+        try
+        {
+            if (_connection is not null) await _connection.DisposeAsync();
+        }
+        catch (Exception)
+        {
+            // Encerrando o processo: se o broker não responder ao fechamento da conexão (rede lenta, broker já fora do
+            // ar), não há nada a fazer. Deixar a exceção subir derrubaria o desligamento limpo do serviço por um
+            // problema que ninguém pode corrigir naquele momento. A conexão será encerrada pelo sistema operacional.
+        }
+
         _lock.Dispose();
     }
 }
