@@ -41,6 +41,7 @@ app.UseExceptionHandler(handler => handler.Run(async context =>
     var (status, title) = error switch
     {
         DomainException => (StatusCodes.Status400BadRequest, "Regra de negócio violada"),
+        ForbiddenException => (StatusCodes.Status403Forbidden, "Ação não permitida"),
         InvalidTokenClaimsException => (StatusCodes.Status401Unauthorized, "Token inválido"),
         BadHttpRequestException => (StatusCodes.Status400BadRequest, "Requisição inválida"),
         _ => (StatusCodes.Status500InternalServerError, "Erro interno")
@@ -52,7 +53,7 @@ app.UseExceptionHandler(handler => handler.Run(async context =>
         title,
         status,
         // Só expomos mensagens que nós mesmos escrevemos; o resto pode vazar detalhes internos.
-        detail = error is DomainException ? error.Message : null
+        detail = error is DomainException or ForbiddenException ? error.Message : null
     });
 }));
 
@@ -87,6 +88,15 @@ tickets.MapGet("/staff", (TicketService service, CancellationToken ct) => servic
 
 tickets.MapGet("/{id:guid}", async (Guid id, TicketService service, CancellationToken ct) =>
     await service.GetAsync(id, ct) is { } ticket ? Results.Ok(ticket) : Results.NotFound());
+
+// Conversa do chamado. Quem pode ver o chamado pode ler e comentar; notas internas só existem para a equipe.
+tickets.MapGet("/{id:guid}/comments", async (Guid id, TicketService service, CancellationToken ct) =>
+    await service.ListCommentsAsync(id, ct) is { } comments ? Results.Ok(comments) : Results.NotFound());
+
+tickets.MapPost("/{id:guid}/comments", async (Guid id, AddCommentRequest request, TicketService service, CancellationToken ct) =>
+    await service.AddCommentAsync(id, request, ct) is { } comment
+        ? Results.Created($"/api/tickets/{id}/comments/{comment.Id}", comment)
+        : Results.NotFound());
 
 tickets.MapPut("/{id:guid}/assign", async (Guid id, AssignTicketRequest request, TicketService service, CancellationToken ct) =>
     await service.AssignAsync(id, request, ct) is { } t ? Results.Ok(t) : Results.NotFound())

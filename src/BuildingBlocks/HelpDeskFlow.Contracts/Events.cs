@@ -57,6 +57,24 @@ public record TicketResolved(
 }
 
 /// <summary>
+/// Alguém comentou num chamado. NÃO leva o texto do comentário (privacidade: o conteúdo fica só no serviço Tickets e
+/// é buscado pela API com a autorização de quem lê). Leva o necessário para decidir QUEM avisar; em especial,
+/// <see cref="IsInternal"/>: notas internas jamais podem gerar aviso para quem abriu o chamado.
+/// </summary>
+public record TicketCommented(
+    Guid EventId, DateTime OccurredAt, Guid TenantId, Guid TicketId, Guid CommentId,
+    Guid AuthorId, string AuthorName, Guid RequesterId, Guid? AssigneeId, string Title, bool IsInternal) : IIntegrationEvent
+{
+    public static string EventName => "tickets.ticket-commented";
+
+    public static TicketCommented Create(
+        Guid tenantId, Guid ticketId, Guid commentId, Guid authorId, string authorName,
+        Guid requesterId, Guid? assigneeId, string title, bool isInternal) =>
+        new(EventIds.FromKey($"ticket-commented:{commentId}"), DateTime.UtcNow, tenantId, ticketId, commentId,
+            authorId, authorName, requesterId, assigneeId, title, isInternal);
+}
+
+/// <summary>
 /// Chamado aberto e sem responsável além do prazo (SLA) da sua prioridade. Detectado por um job agendado.
 /// EventId determinístico por chamado: o alerta de um mesmo chamado nunca é duplicado.
 /// </summary>

@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 import { useRealtimeStatus, type RealtimeStatus } from './realtime'
-import type { AppNotification, NewTicket, NewUser, StaffMember, TenantProfile, Ticket, User } from './types'
+import type { AppNotification, NewComment, NewTicket, NewUser, StaffMember, TenantProfile, Ticket, TicketComment, User } from './types'
 
 // Chaves de cache centralizadas: quem altera dados invalida a chave certa.
 export const keys = {
   tickets: ['tickets'] as const,
   ticket: (id: string) => ['tickets', id] as const,
+  comments: (id: string) => ['tickets', id, 'comments'] as const,
   staff: ['staff'] as const,
   notifications: ['notifications'] as const,
   unread: ['notifications', 'unread'] as const,
@@ -23,6 +24,26 @@ export const useTickets = () =>
 
 export const useTicket = (id: string) =>
   useQuery({ queryKey: keys.ticket(id), queryFn: () => api<Ticket>(`/api/tickets/${id}`) })
+
+/**
+ * Conversa do chamado. A chave começa por ['tickets', id], então qualquer invalidação de chamados (inclusive a que o
+ * tempo real dispara quando chega um aviso) também recarrega a conversa. A consulta periódica é só a rede de segurança.
+ */
+export const useComments = (ticketId: string) =>
+  useQuery({
+    queryKey: keys.comments(ticketId),
+    queryFn: () => api<TicketComment[]>(`/api/tickets/${ticketId}/comments`),
+    refetchInterval: 15_000,
+  })
+
+export function useAddComment(ticketId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (comment: NewComment) =>
+      api<TicketComment>(`/api/tickets/${ticketId}/comments`, { method: 'POST', body: comment }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.comments(ticketId) }),
+  })
+}
 
 export const useStaff = (enabled: boolean) =>
   useQuery({ queryKey: keys.staff, queryFn: () => api<StaffMember[]>('/api/tickets/staff'), enabled })

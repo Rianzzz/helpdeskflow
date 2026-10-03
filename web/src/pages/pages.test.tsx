@@ -4,13 +4,14 @@ import { Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PublicOnly, RequireAuth, RequireRole } from '../components/guards'
 import { resetApiStateForTests } from '../lib/api'
-import type { Role } from '../lib/types'
+import type { Role, Ticket, TicketComment } from '../lib/types'
 import { jsonResponse, makeAuth, makeTicket, renderApp } from '../test/helpers'
 import { LoginPage } from './LoginPage'
 import { RegisterPage, RegistrationStatusPage } from './RegisterPage'
 import { TicketDetailPage } from './TicketDetailPage'
 
 type Handler = (body: unknown) => Response | Promise<Response>
+type FakeServer = { ticket: Ticket; comments?: TicketComment[] }
 const fetchMock = vi.fn<typeof fetch>()
 
 /** Roteia o fetch falso por "MÉTODO /caminho". Rotas não previstas falham o teste em vez de passar em silêncio. */
@@ -215,10 +216,11 @@ describe('RegisterPage', () => {
 
 describe('TicketDetailPage: ações por papel', () => {
   /** O "servidor" falso é stateful: depois de resolver, o GET passa a devolver o chamado resolvido (como o real). */
-  function renderDetail(role: Role, server = { ticket: makeTicket() }, extra: Record<string, Handler> = {}) {
+  function renderDetail(role: Role, server: FakeServer = { ticket: makeTicket() }, extra: Record<string, Handler> = {}) {
     mockApi({
       ...loggedInAs(role),
       'GET /api/tickets/k-1': () => jsonResponse(server.ticket),
+      'GET /api/tickets/k-1/comments': () => jsonResponse(server.comments ?? []),
       'GET /api/tickets/staff': () => jsonResponse([{ id: 'u-1', name: 'Ana', role: 'Admin' }]),
       ...extra,
     })

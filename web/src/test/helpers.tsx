@@ -4,7 +4,7 @@ import type { ReactElement } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { ToastProvider } from '../components/ui'
 import { AuthProvider } from '../lib/auth'
-import type { AuthResponse, Role, Ticket, User } from '../lib/types'
+import type { AuthResponse, Role, Ticket, TicketComment, User } from '../lib/types'
 
 export function makeUser(role: Role = 'Admin', overrides: Partial<User> = {}): User {
   return { id: 'u-1', tenantId: 't-1', name: 'Ana', email: 'ana@acme.com', role, isActive: true, ...overrides }
@@ -35,6 +35,20 @@ export function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     createdAt: '2026-10-01T10:00:00Z',
     closedAt: null,
     slaBreachedAt: null,
+    ...overrides,
+  }
+}
+
+export function makeComment(overrides: Partial<TicketComment> = {}): TicketComment {
+  return {
+    id: 'c-1',
+    ticketId: 'k-1',
+    authorId: 'u-9',
+    authorName: 'Alex',
+    authorRole: 'Agent',
+    body: 'Estamos verificando.',
+    isInternal: false,
+    createdAt: '2026-10-01T11:00:00Z',
     ...overrides,
   }
 }

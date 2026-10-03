@@ -118,6 +118,23 @@ Tickets ──TicketCreated/Assigned/Resolved──► Notifications (grava a no
 > MassTransit foi evitado de propósito: a v9 passou a ser comercial. Usamos `RabbitMQ.Client` direto,
 > o que também ajuda a entender o que acontece por baixo.
 
+### Conversa nos chamados (comentários e notas internas)
+
+Cada chamado tem uma conversa: **respostas públicas** (visíveis a quem abriu o chamado) e **notas internas** (só a equipe vê). O
+cliente e o atendente conversam e cada mensagem aparece **na hora** na tela do outro (o aviso em tempo real recarrega a conversa).
+
+- **Notas internas nunca vazam**, em quatro camadas: o cliente não consegue criar (403); a API só devolve a ele comentários
+  públicos; o *filtro global* do EF Core reforça isso no banco (defesa em profundidade); e o aviso de nota interna só vai para a
+  equipe (o handler tem uma salvaguarda explícita, e há teste que prova que o cliente não recebe nem o aviso)
+- O evento `TicketCommented` **não carrega o texto** do comentário: o conteúdo fica só no Tickets e é lido pela API com a
+  autorização de quem pede. O aviso diz apenas que houve resposta
+- Quem é avisado: resposta pública da equipe → quem abriu o chamado (e o responsável, se for outra pessoa); cliente escreveu →
+  o responsável (ou toda a equipe, se ainda não há); nota interna → só equipe. O autor nunca é avisado do próprio comentário
+- Chamado **fechado** não aceita comentários até ser reaberto; limite de 4000 caracteres; texto sempre exibido como TEXTO
+  (nada de HTML), quebras de linha preservadas, Ctrl+Enter envia
+- Limite conhecido: autor/equipe recém-criados podem demorar instantes para ser reconhecidos (replicação por evento); a tela mostra
+  "Usuário" até lá e o aviso, nesse intervalo, só alcança quem o Notifications já conhece
+
 ### Limites do plano (SaaS de verdade)
 
 Cada empresa tem um plano com limites; hoje o **Free** comporta **5 usuários** (o administrador conta como um). Quem DEFINE o
@@ -215,8 +232,8 @@ adulterado/forjado, bloqueio de conta, reuso de refresh token, idempotência, DL
 **Front-end** (`web/`):
 
 ```
-npm test                  # Vitest + Testing Library (85 testes: cliente de API, tempo real, guardas de rota, formulários, plano)
-npm run e2e               # Playwright: navegador de verdade contra a plataforma em contêineres (48 testes)
+npm test                  # Vitest + Testing Library (98 testes: cliente de API, tempo real, guardas, formulários, plano, conversa)
+npm run e2e               # Playwright: navegador de verdade contra a plataforma em contêineres (56 testes)
 ```
 
 Os testes de navegador (Playwright) abrem o app em `http://localhost:3000` e cobrem: cadastro com acompanhamento da saga

@@ -211,3 +211,70 @@ public class TenantProvisioningFailedHandler(NotificationWriter writer) : IEvent
         await writer.TryWriteAsync(e.EventId, nameof(TenantProvisioningFailedHandler), [notification], ct);
     }
 }
+
+/// <summary>
+/// Comentário novo na conversa de um chamado: decide QUEM avisar.
+///  • nota INTERNA        → só a equipe (o responsável; sem responsável, a equipe toda). NUNCA quem abriu o chamado;
+///  • quem abriu escreveu → o responsável (ou a equipe toda, se ainda não há responsável);
+///  • a equipe respondeu  → quem abriu o chamado (e o responsável, se for outra pessoa).
+/// O autor nunca é avisado do próprio comentário. O texto do comentário não viaja no evento: o aviso só diz que houve resposta.
+/// </summary>
+public class TicketCommentedHandler(NotificationsDbContext db, NotificationWriter writer) : IEventHandler<TicketCommented>
+{
+    public async Task HandleAsync(TicketCommented e, CancellationToken ct)
+    {
+        var ids = new List<Guid> { e.RequesterId };
+        if (e.AssigneeId is { } assigneeId) ids.Add(assigneeId);
+        var known = await db.KnownUsers.AsNoTracking()
+            .Where(u => u.TenantId == e.TenantId && ids.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, ct);
+
+        List<KnownUser> recipients;
+        if (e.IsInternal || e.AuthorId == e.RequesterId)
+        {
+            // O lado da equipe precisa saber: o responsável, ou, se não há, todos da equipe.
+            recipients = e.AssigneeId is { } assignee ? [Required(known, assignee, e)] : await StaffAsync(e, ct);
+        }
+        else
+        {
+            // A equipe respondeu em público: avisa quem abriu o chamado e, se for outra pessoa, o responsável.
+            recipients = [Required(known, e.RequesterId, e)];
+            if (e.AssigneeId is { } other && other != e.AuthorId) recipients.Add(Required(known, other, e));
+        }
+
+        // SALVAGUARDA: nota interna só pode gerar aviso para equipe, mesmo que o cálculo acima mude no futuro.
+        if (e.IsInternal)
+            recipients = recipients.Where(r => r.Role is "Admin" or "Agent").ToList();
+
+        var subject = e.IsInternal ? $"Nota interna em: {e.Title}" : $"Nova resposta em: {e.Title}";
+        var body = e.IsInternal
+            ? $"{e.AuthorName} adicionou uma nota interna no chamado \"{e.Title}\"."
+            : $"{e.AuthorName} comentou no chamado \"{e.Title}\".";
+
+        var notifications = recipients
+            .Where(r => r.Id != e.AuthorId)
+            .DistinctBy(r => r.Id)
+            .Select(r => Notification.Create(e.TenantId, r, subject, body))
+            .ToList();
+
+        await writer.TryWriteAsync(e.EventId, nameof(TicketCommentedHandler), notifications, ct);
+    }
+
+    // Eventos de serviços diferentes não têm ordem entre si: se um usuário ainda não foi replicado, tentamos de novo
+    // (em vez de descartar o aviso em silêncio).
+    private static KnownUser Required(Dictionary<Guid, KnownUser> known, Guid id, TicketCommented e) =>
+        known.TryGetValue(id, out var user)
+            ? user
+            : throw new InvalidOperationException($"Usuário {id} do evento {e.EventId} ainda não replicado para este serviço.");
+
+    private async Task<List<KnownUser>> StaffAsync(TicketCommented e, CancellationToken ct)
+    {
+        var staff = await db.KnownUsers.AsNoTracking()
+            .Where(u => u.TenantId == e.TenantId && (u.Role == "Admin" || u.Role == "Agent"))
+            .ToListAsync(ct);
+
+        return staff.Count == 0
+            ? throw new InvalidOperationException($"Equipe da empresa {e.TenantId} ainda não replicada (evento {e.EventId}).")
+            : staff;
+    }
+}

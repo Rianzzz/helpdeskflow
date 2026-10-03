@@ -84,6 +84,13 @@ public class Ticket
 
     public void MarkSlaBreached(DateTime nowUtc) => SlaBreachedAt = nowUtc;
 
+    /// <summary>Chamado fechado é um registro encerrado: para continuar a conversa, é preciso reabri-lo antes.</summary>
+    public void EnsureAcceptsComments()
+    {
+        if (Status == TicketStatus.Closed)
+            throw new DomainException("Chamado fechado não aceita comentários. Reabra-o primeiro.");
+    }
+
     private void EnsureNotClosed()
     {
         if (Status == TicketStatus.Closed)

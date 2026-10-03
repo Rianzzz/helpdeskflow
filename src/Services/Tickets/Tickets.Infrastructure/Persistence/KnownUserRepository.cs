@@ -14,6 +14,11 @@ public class KnownUserRepository(TicketsDbContext db) : IKnownUserRepository
             .Where(u => u.TenantId == tenantId && ids.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => u.Name, ct);
 
+    public Task<Dictionary<Guid, KnownUserInfo>> GetUsersAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        db.KnownUsers.AsNoTracking()
+            .Where(u => u.TenantId == tenantId && ids.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => new KnownUserInfo(u.Name, u.Role), ct);
+
     public Task<List<StaffMember>> ListStaffAsync(Guid tenantId, CancellationToken ct) =>
         db.KnownUsers.AsNoTracking()
             .Where(u => u.TenantId == tenantId && (u.Role == "Admin" || u.Role == "Agent"))

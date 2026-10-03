@@ -18,6 +18,15 @@ public class TicketRepository(TicketsDbContext db) : ITicketRepository
 
     public Task SaveChangesAsync(CancellationToken ct) => db.SaveChangesAsync(ct);
 
+    public async Task AddCommentAsync(TicketComment comment, CancellationToken ct) =>
+        await db.Comments.AddAsync(comment, ct);
+
+    public Task<List<TicketComment>> ListCommentsAsync(Guid ticketId, bool includeInternal, CancellationToken ct) =>
+        db.Comments.AsNoTracking()
+            .Where(c => c.TicketId == ticketId && (includeInternal || !c.IsInternal))
+            .OrderBy(c => c.CreatedAt)
+            .ToListAsync(ct);
+
     // IgnoreQueryFilters: usado só por jobs de sistema (sem usuário logado), que precisam ver todas as empresas.
     public Task<List<Ticket>> SystemListUnattendedAsync(DateTime createdBeforeUtc, int take, CancellationToken ct) =>
         db.Tickets.IgnoreQueryFilters().AsNoTracking()

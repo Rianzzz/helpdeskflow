@@ -3,6 +3,7 @@ using Tickets.Application.Abstractions;
 using Tickets.Domain;
 using Tickets.Domain.Entities;
 using Tickets.Domain.Enums;
+// TicketComment vive em Tickets.Domain.Entities (já importado acima)
 
 namespace Tickets.Application;
 
@@ -18,6 +19,20 @@ public record TicketResponse(
         new(t.Id, t.RequesterId, t.Title, t.Description, t.Status, t.Priority, t.AssigneeId, t.CreatedAt, t.ClosedAt, t.SlaBreachedAt,
             names?.GetValueOrDefault(t.RequesterId),
             t.AssigneeId is { } a ? names?.GetValueOrDefault(a) : null);
+}
+
+public record AddCommentRequest(string Body, bool IsInternal = false);
+
+public record CommentResponse(
+    Guid Id, Guid TicketId, Guid AuthorId, string? AuthorName, string? AuthorRole,
+    string Body, bool IsInternal, DateTime CreatedAt)
+{
+    public static CommentResponse From(TicketComment c, IReadOnlyDictionary<Guid, KnownUserInfo>? authors = null)
+    {
+        KnownUserInfo? author = null;
+        authors?.TryGetValue(c.AuthorId, out author);
+        return new(c.Id, c.TicketId, c.AuthorId, author?.Name, author?.Role, c.Body, c.IsInternal, c.CreatedAt);
+    }
 }
 
 public class TicketService(
@@ -51,6 +66,43 @@ public class TicketService(
     {
         var ticket = await repository.GetByIdAsync(id, ct);
         return ticket is null ? null : await ToResponseAsync(ticket, ct);
+    }
+
+    /// <summary>
+    /// Conversa do chamado. Devolve null se o chamado não existe OU não é visível para quem pede (cliente de outro
+    /// chamado, outra empresa): a verificação de acesso é a do próprio chamado, que já passa pelos filtros globais.
+    /// Notas internas só vêm para a equipe.
+    /// </summary>
+    public async Task<List<CommentResponse>?> ListCommentsAsync(Guid ticketId, CancellationToken ct)
+    {
+        if (await repository.GetByIdAsync(ticketId, ct) is null) return null;
+
+        var comments = await repository.ListCommentsAsync(ticketId, includeInternal: !currentUser.IsCustomer, ct);
+        var authors = await knownUsers.GetUsersAsync(currentUser.TenantId, comments.Select(c => c.AuthorId).Distinct().ToList(), ct);
+        return comments.Select(c => CommentResponse.From(c, authors)).ToList();
+    }
+
+    public async Task<CommentResponse?> AddCommentAsync(Guid ticketId, AddCommentRequest request, CancellationToken ct)
+    {
+        var ticket = await repository.GetByIdAsync(ticketId, ct);
+        if (ticket is null) return null;
+
+        // O cliente NUNCA cria nota interna: seria inútil (ele mesmo não a veria) e mostra que a regra existe no servidor.
+        if (request.IsInternal && currentUser.IsCustomer)
+            throw new ForbiddenException("Somente a equipe pode criar notas internas.");
+
+        ticket.EnsureAcceptsComments();
+        var comment = TicketComment.Create(currentUser.TenantId, ticketId, currentUser.UserId, request.Body, request.IsInternal);
+        await repository.AddCommentAsync(comment, ct);
+
+        var authors = await knownUsers.GetUsersAsync(currentUser.TenantId, [currentUser.UserId], ct);
+        var authorName = authors.TryGetValue(currentUser.UserId, out var info) ? info.Name : "Alguém";
+        await events.PublishAsync(TicketCommented.Create(
+            ticket.TenantId, ticket.Id, comment.Id, currentUser.UserId, authorName,
+            ticket.RequesterId, ticket.AssigneeId, ticket.Title, comment.IsInternal));
+        await repository.SaveChangesAsync(ct); // comentário + evento: uma única transação (Outbox)
+
+        return CommentResponse.From(comment, authors);
     }
 
     /// <summary>Equipe que pode assumir chamados da empresa atual (para a tela de atribuição).</summary>

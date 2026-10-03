@@ -49,6 +49,24 @@ export interface Ticket {
   slaBreachedAt: string | null
 }
 
+export interface TicketComment {
+  id: string
+  ticketId: string
+  authorId: string
+  /** Nulo se o serviço ainda não conhece o autor (replicação por evento): a tela mostra "Usuário". */
+  authorName: string | null
+  authorRole: Role | null
+  body: string
+  /** Nota interna: só a equipe recebe e vê. */
+  isInternal: boolean
+  createdAt: string
+}
+
+export interface NewComment {
+  body: string
+  isInternal: boolean
+}
+
 export interface StaffMember {
   id: string
   name: string

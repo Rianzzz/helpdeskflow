@@ -127,6 +127,13 @@ public class FakeTicketRepository : ITicketRepository
         Task.FromResult(Items.Where(t => t.CreatedAt <= createdBeforeUtc).Take(take).ToList());
 
     public Task<Ticket?> SystemGetByIdAsync(Guid id, CancellationToken ct) => GetByIdAsync(id, ct);
+
+    public List<TicketComment> Comments { get; } = [];
+
+    public Task AddCommentAsync(TicketComment comment, CancellationToken ct) { Comments.Add(comment); return Task.CompletedTask; }
+
+    public Task<List<TicketComment>> ListCommentsAsync(Guid ticketId, bool includeInternal, CancellationToken ct) =>
+        Task.FromResult(Comments.Where(c => c.TicketId == ticketId && (includeInternal || !c.IsInternal)).OrderBy(c => c.CreatedAt).ToList());
 }
 
 public class FakeKnownUsers : IKnownUserRepository
@@ -148,4 +155,12 @@ public class FakeKnownUsers : IKnownUserRepository
     public Task<List<StaffMember>> ListStaffAsync(Guid tenantId, CancellationToken ct) =>
         Task.FromResult(_staff.Where(s => s.Tenant == tenantId)
             .Select(s => new StaffMember(s.User, _names.GetValueOrDefault(s.User, "?"), "Agent")).ToList());
+
+    private readonly Dictionary<Guid, string> _roles = [];
+
+    public void AddRole(Guid userId, string role) => _roles[userId] = role;
+
+    public Task<Dictionary<Guid, KnownUserInfo>> GetUsersAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        Task.FromResult(ids.Where(_names.ContainsKey)
+            .ToDictionary(id => id, id => new KnownUserInfo(_names[id], _roles.GetValueOrDefault(id, "Agent"))));
 }

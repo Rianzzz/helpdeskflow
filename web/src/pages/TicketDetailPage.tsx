@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import { useState } from 'react'
+import { CommentThread } from '../components/CommentThread'
 import { Alert, Button, Card, ErrorBlock, LoadingBlock, PriorityBadge, Select, StatusBadge, useToast } from '../components/ui'
 import { ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -82,6 +83,8 @@ export function TicketDetailPage() {
           {t.closedAt && <Info label="Fechado" value={formatDateTime(t.closedAt)} />}
         </dl>
       </Card>
+
+      {user && <CommentThread ticket={t} isStaff={isStaff} currentUserId={user.id} />}
 
       {(can.assign || can.resolve || can.close || can.reopen) && (
         <Card className="p-6">

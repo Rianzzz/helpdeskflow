@@ -1,4 +1,4 @@
-using HelpDeskFlow.Observability;
+﻿using HelpDeskFlow.Observability;
 using System.Security.Claims;
 using HelpDeskFlow.Auth;
 using HelpDeskFlow.Contracts;
@@ -12,7 +12,7 @@ using Notifications.Api.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Logs estruturados + traces + métricas + health checks (building block compartilhado).
+// Logs estruturados + traces + mÃ©tricas + health checks (building block compartilhado).
 builder.AddHelpDeskObservability("notifications");
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<NotificationsDbContext>("postgres", tags: ["ready"])
@@ -26,22 +26,23 @@ builder.Services.AddDbContext<NotificationsDbContext>(o =>
     o.UseNpgsql(builder.Configuration.GetConnectionString("NotificationsDb")).UseSnakeCaseNamingConvention());
 builder.Services.AddScoped<NotificationWriter>();
 
-// Tempo real: o servidor EMPURRA as notificações para o navegador (WebSocket, com fallback automático).
+// Tempo real: o servidor EMPURRA as notificaÃ§Ãµes para o navegador (WebSocket, com fallback automÃ¡tico).
 builder.Services.AddSignalR(o =>
 {
-    o.MaximumReceiveMessageSize = 4 * 1024;                  // o cliente quase não envia nada: limite pequeno
-    o.KeepAliveInterval = TimeSpan.FromSeconds(15);          // "ping" que mantém a conexão viva atrás de proxies
+    o.MaximumReceiveMessageSize = 4 * 1024;                  // o cliente quase nÃ£o envia nada: limite pequeno
+    o.KeepAliveInterval = TimeSpan.FromSeconds(15);          // "ping" que mantÃ©m a conexÃ£o viva atrÃ¡s de proxies
     o.ClientTimeoutInterval = TimeSpan.FromSeconds(45);
     o.EnableDetailedErrors = false;                          // nunca vazar detalhes internos para o cliente
 });
 
-// Este serviço é "reativo": quase tudo o que faz é consumir eventos de outros serviços.
+// Este serviÃ§o Ã© "reativo": quase tudo o que faz Ã© consumir eventos de outros serviÃ§os.
 builder.Services.AddRabbitMessaging(builder.Configuration, serviceName: "notifications");
 builder.Services.AddEventHandler<UserRegistered, UserRegisteredHandler>();
 builder.Services.AddEventHandler<TicketCreated, TicketCreatedHandler>();
 builder.Services.AddEventHandler<TicketAssigned, TicketAssignedHandler>();
 builder.Services.AddEventHandler<TicketResolved, TicketResolvedHandler>();
 builder.Services.AddEventHandler<TicketSlaBreached, TicketSlaBreachedHandler>();
+builder.Services.AddEventHandler<TicketCommented, TicketCommentedHandler>();
 builder.Services.AddEventHandler<TenantActivated, TenantActivatedHandler>();
 builder.Services.AddEventHandler<TenantProvisioningFailed, TenantProvisioningFailedHandler>();
 
@@ -59,8 +60,8 @@ app.UseExceptionHandler(h => h.Run(async ctx =>
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
-// Migrations ao iniciar: sempre em desenvolvimento; em contêiner/produção, só se "Database:MigrateOnStartup" = true.
-// (Com várias instâncias, prefira rodar as migrations como um passo separado do deploy.)
+// Migrations ao iniciar: sempre em desenvolvimento; em contÃªiner/produÃ§Ã£o, sÃ³ se "Database:MigrateOnStartup" = true.
+// (Com vÃ¡rias instÃ¢ncias, prefira rodar as migrations como um passo separado do deploy.)
 if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 {
     using var scope = app.Services.CreateScope();
@@ -72,7 +73,7 @@ app.UseAuthorization();
 
 var api = app.MapGroup("/api/notifications").WithTags("Notifications").RequireAuthorization();
 
-// Cada usuário só vê as PRÓPRIAS notificações (usuário e empresa vêm do token, nunca da URL).
+// Cada usuÃ¡rio sÃ³ vÃª as PRÃ“PRIAS notificaÃ§Ãµes (usuÃ¡rio e empresa vÃªm do token, nunca da URL).
 api.MapGet("/", async (bool? unread, ClaimsPrincipal user, NotificationsDbContext db, CancellationToken ct) =>
 {
     var (tenantId, userId) = (user.TenantId(), user.UserId());
@@ -103,8 +104,8 @@ api.MapPut("/{id:guid}/read", async (
     return Results.NoContent();
 });
 
-// Hub de tempo real. CloseOnAuthenticationExpiration: quando o JWT expira, o servidor ENCERRA a conexão (sem isso, uma
-// conexão aberta continuaria recebendo dados para sempre com um token já vencido). O cliente reconecta com um token novo.
+// Hub de tempo real. CloseOnAuthenticationExpiration: quando o JWT expira, o servidor ENCERRA a conexÃ£o (sem isso, uma
+// conexÃ£o aberta continuaria recebendo dados para sempre com um token jÃ¡ vencido). O cliente reconecta com um token novo.
 app.MapHub<NotificationsHub>("/hubs/notifications", o => o.CloseOnAuthenticationExpiration = true)
     .RequireAuthorization();
 

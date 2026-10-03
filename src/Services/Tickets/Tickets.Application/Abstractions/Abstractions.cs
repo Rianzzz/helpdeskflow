@@ -15,6 +15,12 @@ public interface ICurrentUser
 /// <summary>Membro da equipe de atendimento (Admin ou Agent), para escolher o responsável de um chamado.</summary>
 public record StaffMember(Guid Id, string Name, string Role);
 
+/// <summary>Nome e papel de um usuário (da cópia local replicada do Identity), para identificar autores na conversa.</summary>
+public record KnownUserInfo(string Name, string Role);
+
+/// <summary>Ação proibida para o papel de quem pede (ex.: cliente criando nota interna). Vira HTTP 403.</summary>
+public class ForbiddenException(string message) : Exception(message);
+
 public interface IKnownUserRepository
 {
     /// <summary>O usuário existe NESTA empresa e é da equipe de atendimento (Admin ou Agent)?</summary>
@@ -24,6 +30,9 @@ public interface IKnownUserRepository
     Task<Dictionary<Guid, string>> GetNamesAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct);
 
     Task<List<StaffMember>> ListStaffAsync(Guid tenantId, CancellationToken ct);
+
+    /// <summary>Nome e papel dos usuários pedidos (só os da empresa informada).</summary>
+    Task<Dictionary<Guid, KnownUserInfo>> GetUsersAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct);
 }
 
 /// <summary>
@@ -36,6 +45,14 @@ public interface ITicketRepository
     Task<List<Ticket>> ListAsync(CancellationToken ct);
     Task AddAsync(Ticket ticket, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
+
+    Task AddCommentAsync(TicketComment comment, CancellationToken ct);
+
+    /// <summary>
+    /// Comentários do chamado em ordem cronológica. <paramref name="includeInternal"/> = false esconde as notas internas
+    /// (é o que o cliente recebe). A decisão é passada de forma EXPLÍCITA, e o filtro global do DbContext a reforça.
+    /// </summary>
+    Task<List<TicketComment>> ListCommentsAsync(Guid ticketId, bool includeInternal, CancellationToken ct);
 
     // ---- Operações "do sistema" (jobs em segundo plano): enxergam TODAS as empresas, ignorando o filtro de tenant.
     // Nunca devem ser expostas por endpoints HTTP.

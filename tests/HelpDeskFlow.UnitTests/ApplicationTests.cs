@@ -3,6 +3,8 @@ using Identity.Application;
 using Identity.Domain;
 using Microsoft.Extensions.Time.Testing;
 using Tickets.Application;
+using Tickets.Application.Abstractions;
+using Tickets.Domain.Entities;
 using Tickets.Domain.Enums;
 using TicketsDomainException = Tickets.Domain.DomainException;
 
@@ -430,6 +432,149 @@ public class TicketServiceTests
         await Assert.ThrowsAsync<TicketsDomainException>(() => Sut().CloseAsync(created.Id, default)); // não resolvido
 
         Assert.Empty(_timeline.Entries);
+    }
+}
+
+public class TicketCommentTests
+{
+    private readonly Timeline _timeline = new();
+    private readonly FakeTicketRepository _repo;
+    private readonly FakeKnownUsers _known = new();
+    private readonly RecordingPublisher _events;
+    private readonly Guid _tenant = Guid.NewGuid();
+    private readonly Guid _customerId = Guid.NewGuid();
+    private readonly Guid _agentId = Guid.NewGuid();
+
+    public TicketCommentTests()
+    {
+        _repo = new FakeTicketRepository(_timeline);
+        _events = new RecordingPublisher(_timeline);
+        _known.AddName(_customerId, "Carla");
+        _known.AddRole(_customerId, "Customer");
+        _known.AddName(_agentId, "Alex");
+        _known.AddRole(_agentId, "Agent");
+    }
+
+    private TicketService As(Guid user, bool customer) => new(_repo, _known, new FakeCurrentUser(_tenant, user, customer), _events);
+    private TicketService Customer() => As(_customerId, customer: true);
+    private TicketService Agent() => As(_agentId, customer: false);
+
+    private async Task<Guid> OpenTicketAsync() => (await Customer().CreateAsync(new("Impressora", "x", TicketPriority.Low), default)).Id;
+
+    [Fact]
+    public async Task A_comment_stores_the_author_and_publishes_one_event_before_saving()
+    {
+        var id = await OpenTicketAsync();
+        _timeline.Entries.Clear();
+
+        var comment = await Agent().AddCommentAsync(id, new("Já estou verificando."), default);
+
+        Assert.Equal("Alex", comment!.AuthorName);
+        Assert.Equal("Agent", comment.AuthorRole);
+        Assert.Equal(["publish:tickets.ticket-commented", "save"], _timeline.Entries);
+        var evt = Assert.Single(_events.Of<TicketCommented>());
+        Assert.Equal(comment.Id, evt.CommentId);
+        Assert.False(evt.IsInternal);
+    }
+
+    [Fact]
+    public async Task The_event_never_carries_the_comment_text()
+    {
+        var id = await OpenTicketAsync();
+
+        await Agent().AddCommentAsync(id, new("SEGREDO-DA-EQUIPE"), default);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(_events.Of<TicketCommented>().Single());
+        Assert.DoesNotContain("SEGREDO-DA-EQUIPE", json); // o texto fica só no Tickets e é lido com autorização
+    }
+
+    [Fact]
+    public async Task Customers_cannot_create_internal_notes()
+    {
+        var id = await OpenTicketAsync();
+        _timeline.Entries.Clear();
+
+        var ex = await Assert.ThrowsAsync<ForbiddenException>(() => Customer().AddCommentAsync(id, new("tentando", IsInternal: true), default));
+
+        Assert.Contains("equipe", ex.Message);
+        Assert.Empty(_repo.Comments);
+        Assert.Empty(_timeline.Entries); // nada gravado nem publicado
+    }
+
+    [Fact]
+    public async Task Staff_can_create_internal_notes_and_the_event_marks_them_internal()
+    {
+        var id = await OpenTicketAsync();
+
+        await Agent().AddCommentAsync(id, new("cliente parece irritado", IsInternal: true), default);
+
+        Assert.True(Assert.Single(_events.Of<TicketCommented>()).IsInternal);
+    }
+
+    [Fact]
+    public async Task Customers_do_not_see_internal_notes_but_staff_do()
+    {
+        var id = await OpenTicketAsync();
+        await Agent().AddCommentAsync(id, new("resposta pública"), default);
+        await Agent().AddCommentAsync(id, new("nota interna", IsInternal: true), default);
+
+        var asCustomer = await Customer().ListCommentsAsync(id, default);
+        var asAgent = await Agent().ListCommentsAsync(id, default);
+
+        Assert.Equal(["resposta pública"], asCustomer!.Select(c => c.Body));
+        Assert.Equal(["resposta pública", "nota interna"], asAgent!.Select(c => c.Body));
+    }
+
+    [Fact]
+    public async Task Unknown_or_inaccessible_tickets_return_null_for_both_reading_and_writing()
+    {
+        Assert.Null(await Agent().ListCommentsAsync(Guid.NewGuid(), default));
+        Assert.Null(await Agent().AddCommentAsync(Guid.NewGuid(), new("oi"), default));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Empty_comments_are_rejected_before_anything_is_saved(string body)
+    {
+        var id = await OpenTicketAsync();
+
+        await Assert.ThrowsAsync<TicketsDomainException>(() => Agent().AddCommentAsync(id, new(body), default));
+
+        Assert.Empty(_repo.Comments);
+    }
+
+    [Fact]
+    public async Task Overlong_comments_are_rejected()
+    {
+        var id = await OpenTicketAsync();
+
+        await Assert.ThrowsAsync<TicketsDomainException>(() =>
+            Agent().AddCommentAsync(id, new(new string('x', TicketComment.MaxBodyLength + 1)), default));
+    }
+
+    [Fact]
+    public async Task Closed_tickets_do_not_accept_comments_until_reopened()
+    {
+        var id = await OpenTicketAsync();
+        await Agent().ResolveAsync(id, default);
+        await Agent().CloseAsync(id, default);
+
+        var ex = await Assert.ThrowsAsync<TicketsDomainException>(() => Agent().AddCommentAsync(id, new("tarde demais"), default));
+        Assert.Contains("Reabra", ex.Message);
+
+        await Customer().ReopenAsync(id, default);
+        Assert.NotNull(await Agent().AddCommentAsync(id, new("agora sim"), default));
+    }
+
+    [Fact]
+    public async Task Comment_text_is_trimmed_and_kept_verbatim_otherwise()
+    {
+        var id = await OpenTicketAsync();
+
+        var comment = await Agent().AddCommentAsync(id, new("  <b>olá</b>\n  segunda linha  "), default);
+
+        Assert.Equal("<b>olá</b>\n  segunda linha", comment!.Body); // sem "sanitizar": o front exibe como texto
     }
 }
 

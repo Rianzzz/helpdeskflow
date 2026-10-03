@@ -10,6 +10,7 @@ public class TicketsDbContext(DbContextOptions<TicketsDbContext> options, ICurre
 {
     public DbSet<Ticket> Tickets => Set<Ticket>();
     public DbSet<KnownUser> KnownUsers => Set<KnownUser>();
+    public DbSet<TicketComment> Comments => Set<TicketComment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,6 +34,18 @@ public class TicketsDbContext(DbContextOptions<TicketsDbContext> options, ICurre
             e.HasQueryFilter(t => t.TenantId == currentUser.TenantId
                                   && (!currentUser.IsCustomer || t.RequesterId == currentUser.UserId));
             e.HasIndex(t => t.RequesterId);
+        });
+
+        modelBuilder.Entity<TicketComment>(e =>
+        {
+            e.ToTable("ticket_comments");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Body).HasMaxLength(TicketComment.MaxBodyLength).IsRequired();
+            e.HasIndex(c => new { c.TicketId, c.CreatedAt });
+
+            // Defesa em profundidade: mesmo que algum código esquecesse de pedir "sem notas internas", o BANCO só devolve
+            // a clientes comentários públicos da própria empresa. (O acesso ao chamado em si é checado pelo filtro do Ticket.)
+            e.HasQueryFilter(c => c.TenantId == currentUser.TenantId && (!currentUser.IsCustomer || !c.IsInternal));
         });
 
         modelBuilder.Entity<KnownUser>(e =>
