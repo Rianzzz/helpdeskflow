@@ -1,0 +1,7 @@
+# Passa pelo API Gateway (porta 5000). Use o accessToken de qualquer usuário da empresa.
+@host = http://localhost:5000
+@token = COLE_O_ACCESS_TOKEN_AQUI
+
+### Perfil e plano da minha empresa
+GET {{host}}/api/tenants/me
+Authorization: Bearer {{token}}

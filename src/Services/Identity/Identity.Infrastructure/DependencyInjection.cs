@@ -1,5 +1,9 @@
+using HelpDeskFlow.Contracts;
 using HelpDeskFlow.Messaging.Outbox;
+using HelpDeskFlow.Messaging.RabbitMq;
 using Identity.Application;
+using Identity.Infrastructure.Jobs;
+using Identity.Infrastructure.Messaging;
 using Identity.Infrastructure.Persistence;
 using Identity.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +29,12 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<ITokenService, TokenService>();
         services.AddScoped<AuthService>();
+
+        // Saga de onboarding: respostas do serviço Tenants + prazo máximo.
+        services.AddEventHandler<TenantProvisioned, TenantProvisionedHandler>();
+        services.AddEventHandler<TenantProvisioningFailed, TenantProvisioningFailedHandler>();
+        services.AddSingleton(config.GetSection(ProvisioningOptions.SectionName).Get<ProvisioningOptions>() ?? new ProvisioningOptions());
+        services.AddHostedService<ProvisioningTimeoutJob>();
         return services;
     }
 }

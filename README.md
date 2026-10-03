@@ -9,13 +9,14 @@ SaaS multi-tenant de help desk (chamados de suporte), construído em microsservi
    docker compose up -d
    ```
    Se o volume do Postgres já existia antes da Fase 2, crie os bancos uma vez:
-   `docker exec helpdesk-postgres createdb -U helpdesk helpdesk_tickets` e o mesmo para `helpdesk_identity` e `helpdesk_notifications`.
+   `docker exec helpdesk-postgres createdb -U helpdesk helpdesk_tickets` e o mesmo para `helpdesk_identity`, `helpdesk_notifications` e `helpdesk_tenants`.
    Painel do RabbitMQ: http://localhost:15672 (usuário `helpdesk`, senha `helpdesk_dev`, só para dev).
 2. Rode os serviços (cada um em um terminal; as migrations são aplicadas sozinhas em Development):
    ```
    dotnet run --project src/Services/Identity/Identity.Api           --urls http://localhost:5081
    dotnet run --project src/Services/Tickets/Tickets.Api             --urls http://localhost:5080
    dotnet run --project src/Services/Notifications/Notifications.Api --urls http://localhost:5082
+   dotnet run --project src/Services/Tenants/Tenants.Api             --urls http://localhost:5083
    dotnet run --project src/Gateway/Gateway.Api            --urls http://localhost:5000
    ```
    > Na primeira vez, suba Tickets e Notifications **antes** de gerar eventos: cada serviço cria suas filas ao
@@ -33,7 +34,9 @@ src/Gateway/Gateway.Api                API Gateway (YARP): entrada única, segur
 src/BuildingBlocks/HelpDeskFlow.Auth   contrato compartilhado: papéis, claims, validação de JWT
 src/BuildingBlocks/HelpDeskFlow.Contracts            eventos de integração + interfaces (sem dependências)
 src/BuildingBlocks/HelpDeskFlow.Messaging.RabbitMq   publicador/consumidor sobre RabbitMQ.Client
+src/BuildingBlocks/HelpDeskFlow.Messaging.Outbox     Outbox transacional (publicação confiável de eventos)
 src/Services/Notifications/            consome eventos e gera notificações (serviço simples: um projeto só)
+src/Services/Tenants/                  perfil/plano da empresa e passo central da saga de onboarding
 src/Services/Identity/                 cadastro de empresas, login, JWT, refresh tokens, usuários
 src/Services/Tickets/                  chamados (isolados por empresa e por usuário)
   <Serviço>.Domain          regras de negócio puras
@@ -72,11 +75,39 @@ Tickets ──TicketCreated/Assigned/Resolved──► Notifications (grava a no
   (consistência eventual: se um usuário acabou de ser criado, pode levar instantes para ser reconhecido)
 - Os serviços sobrevivem a falhas: com o Notifications fora, os eventos aguardam na fila; com o RabbitMQ fora, as
   requisições continuam funcionando e os consumidores reconectam sozinhos
-- **Limitação conhecida:** se o broker estiver fora no instante da publicação, o evento é perdido (o dado já foi salvo,
-  mas o evento não saiu). A Fase 5 resolve com o padrão **Outbox**
+- **Outbox transacional** (Identity, Tickets e Tenants): o evento é gravado na tabela `outbox_messages` **na mesma transação**
+  do dado; um dispatcher em segundo plano o publica (ordem preservada, `FOR UPDATE SKIP LOCKED`, "pelo menos uma vez").
+  Com o broker fora do ar nada se perde: os eventos ficam no banco e saem quando o RabbitMQ volta
+- **Ids de evento determinísticos** (ex.: `TicketSlaBreached`, eventos da saga): o mesmo fato gera sempre o mesmo `EventId`,
+  então duplicatas, mesmo vindas de instâncias diferentes, são tratadas como um evento só
 
 > MassTransit foi evitado de propósito: a v9 passou a ser comercial. Usamos `RabbitMQ.Client` direto,
 > o que também ajuda a entender o que acontece por baixo.
+
+### SLA (job agendado)
+
+Um job em segundo plano (`SlaMonitor`) verifica, a cada minuto, chamados **abertos e sem responsável** além do prazo da
+prioridade (padrão: Urgent 15 min, High 1 h, Medium 4 h, Low 24 h; configurável na seção `Sla`). Ao estourar, marca o chamado
+(`slaBreachedAt`) e publica `TicketSlaBreached`; o Notifications escala o alerta para os **administradores** da empresa.
+O job varre todas as empresas por métodos de repositório explicitamente "do sistema" (que ignoram o filtro de tenant)
+e nenhum endpoint HTTP os usa.
+
+### Saga de onboarding de empresa (coreografada, com compensação)
+
+```
+1. Identity  : cria a empresa "Provisioning" + admin ──TenantRegistered──►
+2. Tenants   : valida o nome (único, não reservado) e cria perfil/plano
+                 ├─ ok ───TenantProvisioned────────► 3a. Identity ativa a empresa ──UserRegistered/TenantActivated──► Tickets, Notifications (boas-vindas)
+                 └─ não ──TenantProvisioningFailed─► 3b. Identity COMPENSA: empresa "Failed" + remove o admin (libera o e-mail); Notifications explica o motivo
+Timeout: se nada acontecer em 10 min, o Identity desiste, compensa e avisa o Tenants (TenantRegistrationExpired) para desfazer perfil tardio.
+```
+
+- `POST /api/auth/register-tenant` responde **202** (recebido, em provisionamento); acompanhe em
+  `GET /api/auth/tenants/{id}/status` (`Provisioning` → `Active` | `Failed` + motivo) e faça login quando `Active`
+- Ninguém da empresa consegue entrar enquanto ela não está `Active`; **a senha nunca viaja em eventos**
+- O Tenants guarda o **estado da saga** (`onboarding_states`): garante idempotência e que um aviso de expiração que chegue
+  antes do cadastro impeça perfis órfãos
+- Conflito entre ativar e expirar ao mesmo tempo é resolvido por concorrência otimista (o status é token de concorrência)
 
 ### Gateway (borda)
 
@@ -97,5 +128,5 @@ Tickets ──TicketCreated/Assigned/Resolved──► Notifications (grava a no
 - [x] Fase 2 — serviço Identity (registro, login, JWT com claim de tenant, papéis, refresh tokens)
 - [x] Fase 3 — API Gateway (YARP): entrada única, validação de JWT, rate limiting por tenant
 - [x] Fase 4 — eventos com RabbitMQ (Identity → Tickets/Notifications), serviço Notifications, DLQ, idempotência
-- [ ] Fase 5 — Outbox (publicação confiável), SLA com jobs agendados, Saga de onboarding, serviço Tenants
+- [x] Fase 5 — Outbox, SLA com job agendado, serviço Tenants e saga de onboarding com compensação e timeout
 - [ ] Fase 6 — observabilidade (Serilog, OpenTelemetry), testes, CI/CD

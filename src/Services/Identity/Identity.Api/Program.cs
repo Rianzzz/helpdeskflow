@@ -80,8 +80,16 @@ app.UseAuthorization();
 
 var auth = app.MapGroup("/api/auth").WithTags("Auth").RequireRateLimiting("auth");
 
+// 202 Accepted: o cadastro foi RECEBIDO, mas o provisionamento acontece em segundo plano (saga).
+// O cliente consulta o status e faz login quando a empresa estiver "Active".
 auth.MapPost("/register-tenant", async (RegisterTenantRequest r, AuthService s, CancellationToken ct) =>
-    Results.Created("/api/users/me", await s.RegisterTenantAsync(r, ct)));
+{
+    var result = await s.RegisterTenantAsync(r, ct);
+    return Results.Accepted($"/api/auth/tenants/{result.TenantId}/status", result);
+});
+
+auth.MapGet("/tenants/{tenantId:guid}/status", async (Guid tenantId, AuthService s, CancellationToken ct) =>
+    await s.GetTenantStatusAsync(tenantId, ct) is { } status ? Results.Ok(status) : Results.NotFound());
 
 auth.MapPost("/login", async (LoginRequest r, AuthService s, CancellationToken ct) =>
     Results.Ok(await s.LoginAsync(r, ct)));

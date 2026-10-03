@@ -22,6 +22,11 @@ public class IdentityDbContext(DbContextOptions<IdentityDbContext> options) : Db
             e.ToTable("tenants");
             e.HasKey(t => t.Id);
             e.Property(t => t.Name).HasMaxLength(150).IsRequired();
+            e.Property(t => t.FailureReason).HasMaxLength(500);
+            e.Ignore(t => t.IsActive);
+            // O status também é o "token de concorrência": se a saga (Activate) e o timeout (Fail) agirem ao mesmo
+            // tempo sobre a mesma empresa, o segundo a salvar recebe um erro de concorrência em vez de sobrescrever.
+            e.Property(t => t.Status).HasConversion<string>().HasMaxLength(20).IsConcurrencyToken();
         });
 
         b.Entity<User>(e =>

@@ -5,6 +5,8 @@ using Identity.Domain;
 namespace Identity.Application;
 
 public record RegisterTenantRequest(string CompanyName, string AdminName, string Email, string Password);
+public record RegisterTenantResponse(Guid TenantId, string Status);
+public record TenantStatusResponse(Guid TenantId, string Status, string? FailureReason);
 public record LoginRequest(string Email, string Password);
 public record RefreshRequest(string RefreshToken);
 public record CreateUserRequest(string Name, string Email, string Password, UserRole Role);
@@ -27,7 +29,12 @@ public class AuthService(
     TimeProvider clock,
     IEventPublisher events)
 {
-    public async Task<AuthResponse> RegisterTenantAsync(RegisterTenantRequest request, CancellationToken ct)
+    /// <summary>
+    /// PASSO 1 da saga de onboarding. Cria a empresa EM PROVISIONAMENTO e o administrador, e avisa o serviço Tenants
+    /// (evento TenantRegistered, pelo Outbox). Não emite tokens: a empresa só pode ser usada quando a saga concluir.
+    /// O evento NÃO carrega a senha. Credenciais nunca viajam pelo broker.
+    /// </summary>
+    public async Task<RegisterTenantResponse> RegisterTenantAsync(RegisterTenantRequest request, CancellationToken ct)
     {
         var email = ValidateEmail(request.Email);
         PasswordPolicy.Validate(request.Password);
@@ -40,10 +47,16 @@ public class AuthService(
 
         await tenants.AddAsync(tenant, ct);
         await users.AddAsync(admin, ct);
-        var response = await IssueTokensAsync(admin);
-        await StageUserRegisteredAsync(admin);
-        await unitOfWork.SaveChangesAsync(ct); // tenant + admin + refresh token + evento: tudo ou nada
-        return response;
+        await events.PublishAsync(TenantRegistered.Create(tenant.Id, tenant.Name, admin.Id, admin.Name, admin.Email));
+        await unitOfWork.SaveChangesAsync(ct); // empresa + admin + evento: tudo ou nada
+
+        return new RegisterTenantResponse(tenant.Id, tenant.Status.ToString());
+    }
+
+    public async Task<TenantStatusResponse?> GetTenantStatusAsync(Guid tenantId, CancellationToken ct)
+    {
+        var tenant = await tenants.GetByIdAsync(tenantId, ct);
+        return tenant is null ? null : new TenantStatusResponse(tenant.Id, tenant.Status.ToString(), tenant.FailureReason);
     }
 
     public async Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct)

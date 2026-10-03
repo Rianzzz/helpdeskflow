@@ -3,3 +3,4 @@
 CREATE DATABASE helpdesk_tickets;
 CREATE DATABASE helpdesk_identity;
 CREATE DATABASE helpdesk_notifications;
+CREATE DATABASE helpdesk_tenants;

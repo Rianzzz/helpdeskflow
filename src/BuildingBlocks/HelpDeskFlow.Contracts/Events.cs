@@ -71,3 +71,59 @@ public record TicketSlaBreached(
         new(EventIds.FromKey($"sla-breached:{ticketId}"), DateTime.UtcNow, tenantId, ticketId, requesterId,
             title, priority, minutesWaiting);
 }
+
+// ───────────────────────── Saga de onboarding de empresa ─────────────────────────
+// Identity (cria a empresa "em provisionamento") → Tenants (valida e cria o perfil/plano) → Identity (ativa ou compensa).
+
+/// <summary>Identity → Tenants: uma empresa se cadastrou e aguarda provisionamento. NÃO carrega senha nem hash.</summary>
+public record TenantRegistered(
+    Guid EventId, DateTime OccurredAt, Guid TenantId, string CompanyName,
+    Guid AdminUserId, string AdminName, string AdminEmail) : IIntegrationEvent
+{
+    public static string EventName => "identity.tenant-registered";
+
+    public static TenantRegistered Create(Guid tenantId, string companyName, Guid adminUserId, string adminName, string adminEmail) =>
+        new(EventIds.FromKey($"tenant-registered:{tenantId}"), DateTime.UtcNow, tenantId, companyName, adminUserId, adminName, adminEmail);
+}
+
+/// <summary>Tenants → Identity: perfil e plano criados; a empresa pode ser ativada.</summary>
+public record TenantProvisioned(Guid EventId, DateTime OccurredAt, Guid TenantId, string Plan) : IIntegrationEvent
+{
+    public static string EventName => "tenants.tenant-provisioned";
+
+    public static TenantProvisioned Create(Guid tenantId, string plan) =>
+        new(EventIds.FromKey($"tenant-provisioned:{tenantId}"), DateTime.UtcNow, tenantId, plan);
+}
+
+/// <summary>Tenants → Identity/Notifications: o provisionamento foi recusado; é preciso COMPENSAR (desfazer) o cadastro.</summary>
+public record TenantProvisioningFailed(
+    Guid EventId, DateTime OccurredAt, Guid TenantId, string CompanyName,
+    Guid AdminUserId, string AdminName, string AdminEmail, string Reason) : IIntegrationEvent
+{
+    public static string EventName => "tenants.tenant-provisioning-failed";
+
+    public static TenantProvisioningFailed Create(
+        Guid tenantId, string companyName, Guid adminUserId, string adminName, string adminEmail, string reason) =>
+        new(EventIds.FromKey($"tenant-provisioning-failed:{tenantId}"), DateTime.UtcNow, tenantId, companyName,
+            adminUserId, adminName, adminEmail, reason);
+}
+
+/// <summary>Identity → Notifications: a empresa foi ativada (fim feliz da saga).</summary>
+public record TenantActivated(
+    Guid EventId, DateTime OccurredAt, Guid TenantId, string CompanyName,
+    Guid AdminUserId, string AdminName, string AdminEmail) : IIntegrationEvent
+{
+    public static string EventName => "identity.tenant-activated";
+
+    public static TenantActivated Create(Guid tenantId, string companyName, Guid adminUserId, string adminName, string adminEmail) =>
+        new(EventIds.FromKey($"tenant-activated:{tenantId}"), DateTime.UtcNow, tenantId, companyName, adminUserId, adminName, adminEmail);
+}
+
+/// <summary>Identity → Tenants: o prazo da saga esgotou e o Identity desistiu; quem já criou o perfil deve desfazê-lo.</summary>
+public record TenantRegistrationExpired(Guid EventId, DateTime OccurredAt, Guid TenantId) : IIntegrationEvent
+{
+    public static string EventName => "identity.tenant-registration-expired";
+
+    public static TenantRegistrationExpired Create(Guid tenantId) =>
+        new(EventIds.FromKey($"tenant-registration-expired:{tenantId}"), DateTime.UtcNow, tenantId);
+}

@@ -142,3 +142,32 @@ public class TicketSlaBreachedHandler(NotificationsDbContext db, NotificationWri
         await writer.TryWriteAsync(e.EventId, nameof(TicketSlaBreachedHandler), notifications, ct);
     }
 }
+
+/// <summary>Saga concluída: boas-vindas ao administrador da nova empresa.</summary>
+public class TenantActivatedHandler(NotificationWriter writer) : IEventHandler<TenantActivated>
+{
+    public async Task HandleAsync(TenantActivated e, CancellationToken ct)
+    {
+        // O destinatário vem do próprio evento (o UserRegistered do admin pode chegar um instante depois).
+        var admin = KnownUser.Create(e.AdminUserId, e.TenantId, e.AdminName, e.AdminEmail, "Admin");
+        var notification = Notification.Create(e.TenantId, admin,
+            $"Bem-vindo ao HelpDeskFlow, {e.AdminName}!",
+            $"A empresa \"{e.CompanyName}\" foi ativada. Você já pode entrar e começar a cadastrar sua equipe.");
+
+        await writer.TryWriteAsync(e.EventId, nameof(TenantActivatedHandler), [notification], ct);
+    }
+}
+
+/// <summary>Saga falhou: explica ao interessado por que o cadastro foi desfeito (e-mail simulado).</summary>
+public class TenantProvisioningFailedHandler(NotificationWriter writer) : IEventHandler<TenantProvisioningFailed>
+{
+    public async Task HandleAsync(TenantProvisioningFailed e, CancellationToken ct)
+    {
+        var admin = KnownUser.Create(e.AdminUserId, e.TenantId, e.AdminName, e.AdminEmail, "Admin");
+        var notification = Notification.Create(e.TenantId, admin,
+            "Não foi possível criar a sua empresa",
+            $"O cadastro da empresa \"{e.CompanyName}\" não foi concluído: {e.Reason} Você pode tentar novamente com outro nome.");
+
+        await writer.TryWriteAsync(e.EventId, nameof(TenantProvisioningFailedHandler), [notification], ct);
+    }
+}

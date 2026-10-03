@@ -1,13 +1,17 @@
 # Todas as chamadas passam pelo API Gateway (porta 5000).
 @host = http://localhost:5000
 
-### Registrar uma empresa (cria o tenant + o usuário Admin) — devolve os tokens
+### Registrar uma empresa. Responde 202: o provisionamento (saga) acontece em segundo plano.
+### Guarde o tenantId e consulte o status abaixo; faça login quando estiver "Active".
 POST {{host}}/api/auth/register-tenant
 Content-Type: application/json
 
 { "companyName": "Acme Ltda", "adminName": "Ana Admin", "email": "ana@acme.com", "password": "senhaForte123" }
 
-### Login
+### Status do provisionamento (Provisioning -> Active | Failed)
+GET {{host}}/api/auth/tenants/COLE_O_TENANT_ID/status
+
+### Login (só funciona depois que a empresa estiver Active)
 POST {{host}}/api/auth/login
 Content-Type: application/json
 

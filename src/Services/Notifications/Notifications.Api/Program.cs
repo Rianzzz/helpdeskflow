@@ -24,6 +24,8 @@ builder.Services.AddEventHandler<TicketCreated, TicketCreatedHandler>();
 builder.Services.AddEventHandler<TicketAssigned, TicketAssignedHandler>();
 builder.Services.AddEventHandler<TicketResolved, TicketResolvedHandler>();
 builder.Services.AddEventHandler<TicketSlaBreached, TicketSlaBreachedHandler>();
+builder.Services.AddEventHandler<TenantActivated, TenantActivatedHandler>();
+builder.Services.AddEventHandler<TenantProvisioningFailed, TenantProvisioningFailedHandler>();
 
 var app = builder.Build();
 

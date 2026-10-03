@@ -4,13 +4,21 @@ public enum UserRole { Admin = 0, Agent = 1, Customer = 2 }
 
 public class DomainException(string message) : Exception(message);
 
-/// <summary>Empresa cliente do SaaS.</summary>
+public enum TenantStatus { Provisioning = 0, Active = 1, Failed = 2 }
+
+/// <summary>
+/// Empresa cliente do SaaS. Nasce EM PROVISIONAMENTO e só vira Ativa quando a saga de onboarding conclui
+/// (o serviço Tenants valida o nome e cria o plano). Enquanto isso, ninguém da empresa consegue entrar.
+/// </summary>
 public class Tenant
 {
     public Guid Id { get; private set; }
     public string Name { get; private set; } = string.Empty;
-    public bool IsActive { get; private set; }
+    public TenantStatus Status { get; private set; }
+    public string? FailureReason { get; private set; }
     public DateTime CreatedAt { get; private set; }
+
+    public bool IsActive => Status == TenantStatus.Active;
 
     private Tenant() { }
 
@@ -19,7 +27,15 @@ public class Tenant
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 150)
             throw new DomainException("Nome da empresa inválido (obrigatório, até 150 caracteres).");
 
-        return new Tenant { Id = Guid.NewGuid(), Name = name.Trim(), IsActive = true, CreatedAt = DateTime.UtcNow };
+        return new Tenant { Id = Guid.NewGuid(), Name = name.Trim(), Status = TenantStatus.Provisioning, CreatedAt = DateTime.UtcNow };
+    }
+
+    public void Activate() => Status = TenantStatus.Active;
+
+    public void Fail(string reason)
+    {
+        Status = TenantStatus.Failed;
+        FailureReason = reason.Length > 500 ? reason[..500] : reason;
     }
 }
 
