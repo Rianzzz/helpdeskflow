@@ -11,10 +11,13 @@ public record AssignTicketRequest(Guid AssigneeId);
 
 public record TicketResponse(
     Guid Id, Guid RequesterId, string Title, string Description, TicketStatus Status,
-    TicketPriority Priority, Guid? AssigneeId, DateTime CreatedAt, DateTime? ClosedAt, DateTime? SlaBreachedAt)
+    TicketPriority Priority, Guid? AssigneeId, DateTime CreatedAt, DateTime? ClosedAt, DateTime? SlaBreachedAt,
+    string? RequesterName = null, string? AssigneeName = null)
 {
-    public static TicketResponse From(Ticket t) =>
-        new(t.Id, t.RequesterId, t.Title, t.Description, t.Status, t.Priority, t.AssigneeId, t.CreatedAt, t.ClosedAt, t.SlaBreachedAt);
+    public static TicketResponse From(Ticket t, IReadOnlyDictionary<Guid, string>? names = null) =>
+        new(t.Id, t.RequesterId, t.Title, t.Description, t.Status, t.Priority, t.AssigneeId, t.CreatedAt, t.ClosedAt, t.SlaBreachedAt,
+            names?.GetValueOrDefault(t.RequesterId),
+            t.AssigneeId is { } a ? names?.GetValueOrDefault(a) : null);
 }
 
 public class TicketService(
@@ -34,17 +37,25 @@ public class TicketService(
             ticket.TenantId, ticket.Id, ticket.RequesterId, ticket.Title, ticket.Priority.ToString()));
         await repository.SaveChangesAsync(ct);
 
-        return TicketResponse.From(ticket);
+        return await ToResponseAsync(ticket, ct);
     }
 
-    public async Task<List<TicketResponse>> ListAsync(CancellationToken ct) =>
-        (await repository.ListAsync(ct)).Select(TicketResponse.From).ToList();
+    public async Task<List<TicketResponse>> ListAsync(CancellationToken ct)
+    {
+        var tickets = await repository.ListAsync(ct);
+        var names = await NamesForAsync(tickets, ct);
+        return tickets.Select(t => TicketResponse.From(t, names)).ToList();
+    }
 
     public async Task<TicketResponse?> GetAsync(Guid id, CancellationToken ct)
     {
         var ticket = await repository.GetByIdAsync(id, ct);
-        return ticket is null ? null : TicketResponse.From(ticket);
+        return ticket is null ? null : await ToResponseAsync(ticket, ct);
     }
+
+    /// <summary>Equipe que pode assumir chamados da empresa atual (para a tela de atribuição).</summary>
+    public Task<List<StaffMember>> ListStaffAsync(CancellationToken ct) =>
+        knownUsers.ListStaffAsync(currentUser.TenantId, ct);
 
     public async Task<TicketResponse?> AssignAsync(Guid id, AssignTicketRequest request, CancellationToken ct)
     {
@@ -77,6 +88,19 @@ public class TicketService(
             await stageEvent(ticket); // registra no Outbox, ainda sem salvar
         await repository.SaveChangesAsync(ct); // chamado + evento: uma única transação
 
-        return TicketResponse.From(ticket);
+        return await ToResponseAsync(ticket, ct);
+    }
+
+    private async Task<TicketResponse> ToResponseAsync(Ticket ticket, CancellationToken ct) =>
+        TicketResponse.From(ticket, await NamesForAsync([ticket], ct));
+
+    /// <summary>Resolve os nomes (solicitante e responsável) a partir da cópia local de usuários, numa única consulta.</summary>
+    private async Task<Dictionary<Guid, string>> NamesForAsync(IEnumerable<Ticket> tickets, CancellationToken ct)
+    {
+        var ids = tickets
+            .SelectMany(t => new[] { (Guid?)t.RequesterId, t.AssigneeId })
+            .OfType<Guid>().Distinct().ToList();
+
+        return ids.Count == 0 ? [] : await knownUsers.GetNamesAsync(currentUser.TenantId, ids, ct);
     }
 }

@@ -344,6 +344,46 @@ public class TicketServiceTests
     }
 
     [Fact]
+    public async Task Ticket_responses_carry_requester_and_assignee_names()
+    {
+        var agent = Guid.NewGuid();
+        _known.AddStaff(_tenant, agent);
+        _known.AddName(_user, "Carla Cliente");
+        _known.AddName(agent, "Alex Agente");
+        var created = await Sut().CreateAsync(new("x", "", TicketPriority.Low), default);
+        Assert.Equal("Carla Cliente", created.RequesterName);
+        Assert.Null(created.AssigneeName);
+
+        await Sut().AssignAsync(created.Id, new(agent), default);
+        var listed = Assert.Single(await Sut().ListAsync(default));
+
+        Assert.Equal("Carla Cliente", listed.RequesterName);
+        Assert.Equal("Alex Agente", listed.AssigneeName);
+    }
+
+    [Fact]
+    public async Task Unknown_users_leave_names_empty_instead_of_failing()
+    {
+        var created = await Sut().CreateAsync(new("x", "", TicketPriority.Low), default);
+
+        Assert.Null(created.RequesterName);
+    }
+
+    [Fact]
+    public async Task Staff_list_only_contains_staff_of_the_current_tenant()
+    {
+        var mine = Guid.NewGuid();
+        _known.AddStaff(_tenant, mine);
+        _known.AddName(mine, "Minha equipe");
+        var theirs = Guid.NewGuid();
+        _known.AddStaff(Guid.NewGuid(), theirs);
+
+        var staff = await Sut().ListStaffAsync(default);
+
+        Assert.Equal(mine, Assert.Single(staff).Id);
+    }
+
+    [Fact]
     public async Task Unknown_ticket_returns_null_and_publishes_nothing()
     {
         var result = await Sut().ResolveAsync(Guid.NewGuid(), default);

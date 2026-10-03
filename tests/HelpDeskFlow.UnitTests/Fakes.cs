@@ -134,6 +134,17 @@ public class FakeKnownUsers : IKnownUserRepository
 
     public void AddStaff(Guid tenantId, Guid userId) => _staff.Add((tenantId, userId));
 
+    private readonly Dictionary<Guid, string> _names = [];
+
+    public void AddName(Guid userId, string name) => _names[userId] = name;
+
     public Task<bool> IsStaffOfTenantAsync(Guid tenantId, Guid userId, CancellationToken ct) =>
         Task.FromResult(_staff.Contains((tenantId, userId)));
+
+    public Task<Dictionary<Guid, string>> GetNamesAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+        Task.FromResult(ids.Where(_names.ContainsKey).ToDictionary(id => id, id => _names[id]));
+
+    public Task<List<StaffMember>> ListStaffAsync(Guid tenantId, CancellationToken ct) =>
+        Task.FromResult(_staff.Where(s => s.Tenant == tenantId)
+            .Select(s => new StaffMember(s.User, _names.GetValueOrDefault(s.User, "?"), "Agent")).ToList());
 }

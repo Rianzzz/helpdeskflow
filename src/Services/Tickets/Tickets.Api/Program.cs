@@ -81,6 +81,10 @@ tickets.MapPost("/", async (CreateTicketRequest request, TicketService service, 
 
 tickets.MapGet("/", (TicketService service, CancellationToken ct) => service.ListAsync(ct));
 
+// Equipe da empresa que pode ser escolhida como responsável (Admin/Agent).
+tickets.MapGet("/staff", (TicketService service, CancellationToken ct) => service.ListStaffAsync(ct))
+    .RequireAuthorization(Policies.Staff);
+
 tickets.MapGet("/{id:guid}", async (Guid id, TicketService service, CancellationToken ct) =>
     await service.GetAsync(id, ct) is { } ticket ? Results.Ok(ticket) : Results.NotFound());
 

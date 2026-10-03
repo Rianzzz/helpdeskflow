@@ -128,6 +128,51 @@ public class TicketTests(StackFixture stack)
     }
 
     [Fact]
+    public async Task Tickets_expose_requester_and_assignee_names_for_the_UI()
+    {
+        var company = await stack.CreateCompanyAsync();
+        var agent = await stack.AddUserAsync(company, "Agent");
+        var customer = await stack.AddUserAsync(company, "Customer");
+        var id = await stack.CreateTicketAsync(customer, "com nomes");
+
+        await AssignWhenKnownAsync(agent, id, agent.Id);
+
+        var ticket = await (await stack.Tickets.SendAsync(customer.Token, HttpMethod.Get, $"/api/tickets/{id}"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Customer", ticket.GetProperty("requesterName").GetString());
+        Assert.Equal("Agent", ticket.GetProperty("assigneeName").GetString());
+    }
+
+    [Fact]
+    public async Task Staff_list_is_available_to_staff_only_and_scoped_to_the_company()
+    {
+        var a = await stack.CreateCompanyAsync("A");
+        var b = await stack.CreateCompanyAsync("B");
+        var agentA = await stack.AddUserAsync(a, "Agent");
+        await stack.AddUserAsync(b, "Agent");
+        var customerA = await stack.AddUserAsync(a, "Customer");
+
+        // Espera a replicação dos usuários do tenant A.
+        JsonElement list = default;
+        await Wait.UntilAsync(async () =>
+        {
+            var response = await stack.Tickets.SendAsync(agentA.Token, HttpMethod.Get, "/api/tickets/staff");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            list = await response.Content.ReadFromJsonAsync<JsonElement>();
+            return list.GetArrayLength() >= 2;
+        }, "equipe do tenant A replicada");
+
+        var ids = list.EnumerateArray().Select(m => m.GetProperty("id").GetGuid()).ToList();
+        Assert.Contains(a.Admin.Id, ids);
+        Assert.Contains(agentA.Id, ids);
+        Assert.DoesNotContain(customerA.Id, ids);                 // cliente não é equipe
+        Assert.Equal(2, ids.Count);                                // nada da empresa B
+
+        var asCustomer = await stack.Tickets.SendAsync(customerA.Token, HttpMethod.Get, "/api/tickets/staff");
+        Assert.Equal(HttpStatusCode.Forbidden, asCustomer.StatusCode);
+    }
+
+    [Fact]
     public async Task Invalid_input_is_a_400_not_a_500()
     {
         var company = await stack.CreateCompanyAsync();

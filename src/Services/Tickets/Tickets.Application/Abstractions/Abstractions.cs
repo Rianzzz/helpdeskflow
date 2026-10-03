@@ -12,10 +12,18 @@ public interface ICurrentUser
     bool IsCustomer { get; }
 }
 
+/// <summary>Membro da equipe de atendimento (Admin ou Agent), para escolher o responsável de um chamado.</summary>
+public record StaffMember(Guid Id, string Name, string Role);
+
 public interface IKnownUserRepository
 {
     /// <summary>O usuário existe NESTA empresa e é da equipe de atendimento (Admin ou Agent)?</summary>
     Task<bool> IsStaffOfTenantAsync(Guid tenantId, Guid userId, CancellationToken ct);
+
+    /// <summary>Nomes dos usuários pedidos (só os da empresa informada), para exibir nos chamados.</summary>
+    Task<Dictionary<Guid, string>> GetNamesAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct);
+
+    Task<List<StaffMember>> ListStaffAsync(Guid tenantId, CancellationToken ct);
 }
 
 /// <summary>
