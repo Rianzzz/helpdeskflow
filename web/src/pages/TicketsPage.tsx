@@ -51,7 +51,7 @@ export function TicketsPage() {
                 }`}
               >
                 {tab.label}
-                <span className="ml-1.5 text-xs text-slate-400">{counts(tab.value)}</span>
+                <span className="ml-1.5 text-xs text-slate-600">{counts(tab.value)}</span>
               </button>
             ))}
           </div>
@@ -61,7 +61,7 @@ export function TicketsPage() {
             placeholder={isStaff ? 'Buscar por título ou solicitante…' : 'Buscar por título…'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border-0 bg-white px-3 py-2 text-sm shadow-sm ring-1 ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-600 lg:w-72"
+            className="w-full rounded-lg border-0 bg-white px-3 py-2 text-sm shadow-sm ring-1 ring-slate-300 placeholder:text-slate-500 focus:ring-2 focus:ring-brand-600 lg:w-72"
           />
         </div>
 

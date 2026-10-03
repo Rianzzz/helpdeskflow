@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Alert, Button, Input } from '../components/ui'
 import { ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { safeRedirectTarget } from '../lib/redirect'
 import { AuthShell } from './AuthShell'
 
 export function LoginPage() {
@@ -22,7 +23,7 @@ export function LoginPage() {
     setSubmitting(true)
     try {
       await login(email.trim(), password)
-      navigate(state?.from ?? '/tickets', { replace: true })
+      navigate(safeRedirectTarget(state?.from), { replace: true })
     } catch (e) {
       // Mensagem propositalmente genérica para 401 (o servidor também não diz se foi o e-mail ou a senha).
       setError(e instanceof ApiError && e.status === 401 ? 'E-mail ou senha incorretos, ou conta temporariamente bloqueada.' : e instanceof ApiError ? e.message : 'Não foi possível entrar. Verifique sua conexão.')

@@ -2,7 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { RequireAuth, RequireRole } from '../components/guards'
+import { PublicOnly, RequireAuth, RequireRole } from '../components/guards'
 import { resetApiStateForTests } from '../lib/api'
 import type { Role } from '../lib/types'
 import { jsonResponse, makeAuth, makeTicket, renderApp } from '../test/helpers'
@@ -101,6 +101,29 @@ describe('guardas de rota', () => {
     renderGuarded('/tickets')
 
     expect(await screen.findByText('Tela de login')).toBeInTheDocument()
+  })
+
+  it('depois de entrar, volta para a página que a pessoa tentou abrir (e não sempre para os chamados)', async () => {
+    mockApi({ 'POST /api/auth/login': () => jsonResponse(makeAuth()) })
+    const user = userEvent.setup()
+    renderApp(
+      <Routes>
+        <Route element={<PublicOnly />}>
+          <Route path="/login" element={<LoginPage />} />
+        </Route>
+        <Route element={<RequireAuth />}>
+          <Route path="/tickets" element={<p>Chamados</p>} />
+          <Route path="/notifications" element={<p>Tela de notificações</p>} />
+        </Route>
+      </Routes>,
+      '/notifications',
+    )
+
+    await user.type(await screen.findByLabelText('E-mail'), 'ana@acme.com')
+    await user.type(screen.getByLabelText('Senha'), 'senhaForte123')
+    await user.click(screen.getByRole('button', { name: 'Entrar' }))
+
+    expect(await screen.findByText('Tela de notificações')).toBeInTheDocument()
   })
 
   it('admin acessa a área de usuários', async () => {

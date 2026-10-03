@@ -48,7 +48,7 @@ export function NotificationsPage() {
                   <div className="min-w-0 flex-1">
                     <p className={`text-sm ${isUnread ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}>{n.subject}</p>
                     <p className="mt-0.5 text-sm text-slate-600">{n.body}</p>
-                    <p className="mt-1 text-xs text-slate-400">{timeAgo(n.createdAt)}</p>
+                    <p className="mt-1 text-xs text-slate-600">{timeAgo(n.createdAt)}</p>
                   </div>
                   {isUnread && (
                     <Button variant="ghost" className="shrink-0" onClick={() => markRead.mutate(n.id)} disabled={markRead.isPending}>

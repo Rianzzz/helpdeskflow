@@ -92,7 +92,7 @@ function FieldShell({ label, hint, error, children }: FieldShellProps) {
 }
 
 const fieldStyles =
-  'block w-full rounded-lg border-0 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm ring-1 ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-600 aria-[invalid=true]:ring-red-500'
+  'block w-full rounded-lg border-0 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm ring-1 ring-slate-300 placeholder:text-slate-500 focus:ring-2 focus:ring-brand-600 aria-[invalid=true]:ring-red-500'
 
 export function Input({
   label,

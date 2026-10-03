@@ -169,6 +169,28 @@ dotnet test tests/HelpDeskFlow.IntegrationTests   # precisa do Docker: sobe Post
 Os testes de integração exercitam a plataforma de verdade (saga de onboarding, isolamento entre empresas e papéis, JWT
 adulterado/forjado, bloqueio de conta, reuso de refresh token, idempotência, DLQ, job de SLA).
 
+**Front-end** (`web/`):
+
+```
+npm test                  # Vitest + Testing Library (52 testes: cliente de API, guardas de rota, formulários, ações por papel)
+npm run e2e               # Playwright: navegador de verdade contra a plataforma em contêineres (36 testes)
+```
+
+Os testes de navegador (Playwright) abrem o app em `http://localhost:3000` e cobrem: cadastro com acompanhamento da saga
+(sucesso, nome duplicado/reservado, senha fraca), login e sessão (redirecionamento de volta, recarregar, sair, refresh token
+adulterado, **uma única renovação** quando várias requisições expiram juntas), o ciclo de um chamado entre **três pessoas em
+navegadores isolados** (cliente abre → atendente assume e resolve → cliente é avisado e reabre), isolamento entre empresas e
+entre clientes, segurança (CSP bloqueando script injetado, HTML de usuário exibido como texto, tokens fora do `localStorage`,
+servidor recusando ação proibida), **acessibilidade** (axe, WCAG AA) e celular. Antes, suba a plataforma com o limite de
+login alto, porque os testes fazem muitos logins por minuto do mesmo IP:
+
+```
+AUTH_RATE_LIMIT_PER_MINUTE=1000 docker compose --profile apps up -d --build      # PowerShell: $env:AUTH_RATE_LIMIT_PER_MINUTE=1000
+cd web && npx playwright install chromium && npm run e2e
+```
+
+Cada teste cria a própria empresa (nomes aleatórios), então podem rodar em paralelo e repetidas vezes sem limpar nada.
+
 ### Front-end (`web/`)
 
 React 19 + TypeScript + Vite, Tailwind CSS, React Router e TanStack Query. Telas: cadastro de empresa (com o acompanhamento
@@ -188,11 +210,12 @@ da **saga** em tempo quase real), login, chamados (filtros, busca, criação, de
 
 `.github/workflows/ci.yml` roda a cada push e pull request, com permissão mínima (`contents: read`):
 
-0. **Front-end**: `npm ci`, lint, testes, build de produção (com checagem de tipos) e `npm audit`
+0. **Front-end**: `npm ci`, lint, testes, build de produção (com checagem de tipos), tipos dos testes de navegador e `npm audit`
 1. **Build e testes**: compila em Release, roda os testes unitários e os de integração (Testcontainers; o runner já tem Docker)
 2. **Pacotes vulneráveis**: `dotnet list package --vulnerable --include-transitive` e falha se achar algum
-3. **Imagens Docker + teste de fumaça**: constrói as 6 imagens (5 serviços e o front), sobe a plataforma completa com `docker compose --profile apps`
-   (segredos efêmeros gerados na hora) e roda `scripts/smoke-test.sh` pelo gateway (saga de onboarding, login, chamado, notificação)
+3. **Imagens Docker + fumaça + testes de navegador**: constrói as 6 imagens (5 serviços e o front), sobe a plataforma completa com
+   `docker compose --profile apps` (segredos efêmeros gerados na hora), roda `scripts/smoke-test.sh` pelo gateway (saga de onboarding,
+   login, chamado, notificação) e depois os **testes de navegador do Playwright**; se algo falhar, guarda o relatório com screenshots e traces
 
 O mesmo teste de fumaça serve localmente: `./scripts/smoke-test.sh http://localhost:5000 http://localhost:3000` (o segundo argumento, opcional, valida também o nginx: SPA, proxy da API e cabeçalhos).
 

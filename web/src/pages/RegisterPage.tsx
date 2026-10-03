@@ -143,7 +143,7 @@ export function RegistrationStatusPage() {
         <ol className="space-y-1.5 text-sm text-slate-600" aria-live="polite">
           <li>✓ Cadastro recebido</li>
           <li>… Validando o nome da empresa e criando o plano</li>
-          <li className="text-slate-400">○ Ativando o acesso</li>
+          <li className="text-slate-500">○ Ativando o acesso</li>
         </ol>
       </div>
     </AuthShell>

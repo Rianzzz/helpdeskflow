@@ -39,7 +39,7 @@ export function UsersPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-900">
                     {u.name}
-                    {u.id === me?.id && <span className="ml-2 text-xs font-normal text-slate-400">(você)</span>}
+                    {u.id === me?.id && <span className="ml-2 text-xs font-normal text-slate-500">(você)</span>}
                   </p>
                   <p className="truncate text-xs text-slate-500">{u.email}</p>
                 </div>

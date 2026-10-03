@@ -13,7 +13,12 @@ export const keys = {
   tenant: ['tenant'] as const,
 }
 
-export const useTickets = () => useQuery({ queryKey: keys.tickets, queryFn: () => api<Ticket[]>('/api/tickets') })
+/**
+ * A lista se atualiza sozinha a cada 15 s (pausa em aba escondida): quem fica com a tela aberta vê os chamados novos
+ * sem precisar recarregar. Tempo real "de verdade" seria com SignalR; consulta periódica é simples e suficiente aqui.
+ */
+export const useTickets = () =>
+  useQuery({ queryKey: keys.tickets, queryFn: () => api<Ticket[]>('/api/tickets'), refetchInterval: 15_000 })
 
 export const useTicket = (id: string) =>
   useQuery({ queryKey: keys.ticket(id), queryFn: () => api<Ticket>(`/api/tickets/${id}`) })

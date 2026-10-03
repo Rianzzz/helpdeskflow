@@ -99,6 +99,8 @@ services:
       ConnectionStrings__IdentityDb: Host=postgres;Port=5432;Database=helpdesk_identity;Username=helpdesk;Password=${POSTGRES_PASSWORD:-helpdesk_dev}
       # O gateway fica nesta rede privada: confiamos no X-Forwarded-For SÓ dele (rate limit por IP do cliente real).
       ForwardedHeaders__KnownNetworks__0: 172.28.0.0/16
+      # Limite de tentativas de login/cadastro por IP. Os testes de navegador (Playwright) aumentam isto.
+      RateLimiting__AuthPermitPerMinute: ${AUTH_RATE_LIMIT_PER_MINUTE:-20}
     depends_on: *app-depends-on
     healthcheck: *app-healthcheck
     restart: unless-stopped

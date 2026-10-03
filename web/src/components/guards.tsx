@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import type { Role } from '../lib/types'
+import { safeRedirectTarget } from '../lib/redirect'
 import { Card, EmptyState, Spinner } from './ui'
 
 export function FullPageSpinner() {
@@ -21,12 +22,17 @@ export function RequireAuth() {
   return <Outlet />
 }
 
-/** Telas de visitante (login/cadastro): quem já está logado vai direto para os chamados. */
+/**
+ * Telas de visitante (login/cadastro): quem já está logado sai daqui. Vai para a página que tentou abrir antes de
+ * ser mandado ao login (guardada em state.from pelo RequireAuth) ou, se não houver, para os chamados.
+ * É ESTE componente que redireciona logo após o login, por isso ele precisa respeitar o "de onde veio".
+ */
 export function PublicOnly() {
   const { user, restoring } = useAuth()
+  const location = useLocation()
 
   if (restoring) return <FullPageSpinner />
-  if (user) return <Navigate to="/tickets" replace />
+  if (user) return <Navigate to={safeRedirectTarget((location.state as { from?: string } | null)?.from)} replace />
   return <Outlet />
 }
 
