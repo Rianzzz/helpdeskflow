@@ -1,27 +1,25 @@
+using System.Security.Claims;
+using HelpDeskFlow.Auth;
 using Tickets.Application.Abstractions;
 
 namespace Tickets.Api;
 
 /// <summary>
-/// FASE 1 (temporária): o tenant vem do header "X-Tenant-Id".
-/// Na Fase 2, quando o serviço Identity existir, o tenant passará a vir de uma claim
-/// dentro do JWT, assinada pelo servidor — um header qualquer pode ser forjado pelo cliente.
+/// Lê quem é o usuário a partir das claims do JWT. O token já foi validado (assinatura, expiração,
+/// emissor e audiência) pelo middleware de autenticação, então estas claims são confiáveis:
+/// o cliente não consegue forjá-las sem a chave de assinatura do Identity.
 /// </summary>
-public class HttpTenantProvider(IHttpContextAccessor accessor) : ITenantProvider
+public class ClaimsCurrentUser(IHttpContextAccessor accessor) : ICurrentUser
 {
-    public const string HeaderName = "X-Tenant-Id";
+    private ClaimsPrincipal Principal =>
+        accessor.HttpContext?.User is { Identity.IsAuthenticated: true } p ? p : throw new InvalidTokenClaimsException();
 
-    public Guid TenantId
-    {
-        get
-        {
-            var value = accessor.HttpContext?.Request.Headers[HeaderName].FirstOrDefault();
-            return Guid.TryParse(value, out var id)
-                ? id
-                : throw new TenantNotResolvedException();
-        }
-    }
+    public Guid TenantId => ReadGuid(AppClaims.TenantId);
+    public Guid UserId => ReadGuid(AppClaims.Subject);
+    public bool IsCustomer => Principal.IsInRole(Roles.Customer);
+
+    private Guid ReadGuid(string claim) =>
+        Guid.TryParse(Principal.FindFirstValue(claim), out var id) ? id : throw new InvalidTokenClaimsException();
 }
 
-public class TenantNotResolvedException()
-    : Exception($"Header '{HttpTenantProvider.HeaderName}' ausente ou inválido (esperado um GUID).");
+public class InvalidTokenClaimsException() : Exception("Token sem as claims necessárias.");

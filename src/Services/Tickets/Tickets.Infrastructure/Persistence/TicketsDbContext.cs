@@ -4,7 +4,7 @@ using Tickets.Domain.Entities;
 
 namespace Tickets.Infrastructure.Persistence;
 
-public class TicketsDbContext(DbContextOptions<TicketsDbContext> options, ITenantProvider tenant)
+public class TicketsDbContext(DbContextOptions<TicketsDbContext> options, ICurrentUser currentUser)
     : DbContext(options)
 {
     public DbSet<Ticket> Tickets => Set<Ticket>();
@@ -24,9 +24,12 @@ public class TicketsDbContext(DbContextOptions<TicketsDbContext> options, ITenan
             e.HasIndex(t => new { t.TenantId, t.Status });
 
             // Global Query Filter: TODA consulta em Tickets recebe automaticamente
-            // "WHERE tenant_id = <tenant atual>". Isolamento entre empresas sem depender
-            // de cada desenvolvedor lembrar de filtrar manualmente.
-            e.HasQueryFilter(t => t.TenantId == tenant.TenantId);
+            //  1) "WHERE tenant_id = <empresa atual>"  -> isolamento entre empresas
+            //  2) clientes só veem os chamados que eles mesmos abriram -> isolamento entre usuários
+            // Sem depender de cada desenvolvedor lembrar de filtrar manualmente.
+            e.HasQueryFilter(t => t.TenantId == currentUser.TenantId
+                                  && (!currentUser.IsCustomer || t.RequesterId == currentUser.UserId));
+            e.HasIndex(t => t.RequesterId);
         });
     }
 }

@@ -1,6 +1,30 @@
-@Identity.Api_HostAddress = http://localhost:5062
+@host = http://localhost:5081
 
-GET {{Identity.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### Registrar uma empresa (cria o tenant + o usuário Admin) — devolve os tokens
+POST {{host}}/api/auth/register-tenant
+Content-Type: application/json
 
-###
+{ "companyName": "Acme Ltda", "adminName": "Ana Admin", "email": "ana@acme.com", "password": "senhaForte123" }
+
+### Login
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "ana@acme.com", "password": "senhaForte123" }
+
+### Renovar tokens (o refresh token antigo deixa de valer a cada uso)
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "COLE_O_REFRESH_TOKEN" }
+
+### Quem sou eu
+GET {{host}}/api/users/me
+Authorization: Bearer COLE_O_ACCESS_TOKEN
+
+### Admin cria um usuário da própria empresa (Agent ou Customer)
+POST {{host}}/api/users
+Authorization: Bearer COLE_O_ACCESS_TOKEN
+Content-Type: application/json
+
+{ "name": "Carla Cliente", "email": "carla@acme.com", "password": "senhaForte123", "role": "Customer" }

@@ -1,22 +1,19 @@
-@host = http://localhost:5080
-# Duas empresas (tenants) diferentes, para testar o isolamento de dados:
-@tenantA = 11111111-1111-1111-1111-111111111111
-@tenantB = 22222222-2222-2222-2222-222222222222
+@identity = http://localhost:5081
+@tickets = http://localhost:5080
+# Cole aqui o accessToken obtido no login (veja Identity.Api.http):
+@token = COLE_O_ACCESS_TOKEN_AQUI
 
-### Criar chamado na empresa A
-POST {{host}}/api/tickets
-X-Tenant-Id: {{tenantA}}
+### Criar chamado (qualquer usuário autenticado)
+POST {{tickets}}/api/tickets
+Authorization: Bearer {{token}}
 Content-Type: application/json
 
 { "title": "Impressora não funciona", "description": "Sala 3, erro de papel", "priority": "High" }
 
-### Listar chamados da empresa A (deve ver o chamado acima)
-GET {{host}}/api/tickets
-X-Tenant-Id: {{tenantA}}
+### Listar chamados (cliente vê só os seus; Admin/Agent veem todos da empresa)
+GET {{tickets}}/api/tickets
+Authorization: Bearer {{token}}
 
-### Listar chamados da empresa B (deve vir VAZIO — isolamento!)
-GET {{host}}/api/tickets
-X-Tenant-Id: {{tenantB}}
-
-### Sem header de tenant (deve dar 400)
-GET {{host}}/api/tickets
+### Resolver (somente Admin/Agent). Troque o id.
+PUT {{tickets}}/api/tickets/00000000-0000-0000-0000-000000000000/resolve
+Authorization: Bearer {{token}}

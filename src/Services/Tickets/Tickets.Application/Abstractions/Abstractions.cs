@@ -2,10 +2,14 @@ using Tickets.Domain.Entities;
 
 namespace Tickets.Application.Abstractions;
 
-/// <summary>Informa qual empresa (tenant) está fazendo a requisição atual.</summary>
-public interface ITenantProvider
+/// <summary>Quem está fazendo a requisição atual, extraído do JWT já validado.</summary>
+public interface ICurrentUser
 {
     Guid TenantId { get; }
+    Guid UserId { get; }
+
+    /// <summary>Clientes só enxergam os próprios chamados; a equipe (Admin/Agent) vê todos da empresa.</summary>
+    bool IsCustomer { get; }
 }
 
 /// <summary>

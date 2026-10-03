@@ -10,6 +10,7 @@ public class Ticket
 {
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
+    public Guid RequesterId { get; private set; }
     public string Title { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
     public TicketStatus Status { get; private set; }
@@ -21,7 +22,7 @@ public class Ticket
     // Exigido pelo EF Core
     private Ticket() { }
 
-    public static Ticket Open(Guid tenantId, string title, string description, TicketPriority priority)
+    public static Ticket Open(Guid tenantId, Guid requesterId, string title, string description, TicketPriority priority)
     {
         if (string.IsNullOrWhiteSpace(title))
             throw new DomainException("O título do chamado é obrigatório.");
@@ -30,6 +31,7 @@ public class Ticket
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
+            RequesterId = requesterId,
             Title = title.Trim(),
             Description = description?.Trim() ?? string.Empty,
             Priority = priority,

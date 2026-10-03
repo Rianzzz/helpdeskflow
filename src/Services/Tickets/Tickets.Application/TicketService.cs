@@ -8,18 +8,18 @@ public record CreateTicketRequest(string Title, string Description, TicketPriori
 public record AssignTicketRequest(Guid AssigneeId);
 
 public record TicketResponse(
-    Guid Id, string Title, string Description, TicketStatus Status,
+    Guid Id, Guid RequesterId, string Title, string Description, TicketStatus Status,
     TicketPriority Priority, Guid? AssigneeId, DateTime CreatedAt, DateTime? ClosedAt)
 {
     public static TicketResponse From(Ticket t) =>
-        new(t.Id, t.Title, t.Description, t.Status, t.Priority, t.AssigneeId, t.CreatedAt, t.ClosedAt);
+        new(t.Id, t.RequesterId, t.Title, t.Description, t.Status, t.Priority, t.AssigneeId, t.CreatedAt, t.ClosedAt);
 }
 
-public class TicketService(ITicketRepository repository, ITenantProvider tenant)
+public class TicketService(ITicketRepository repository, ICurrentUser currentUser)
 {
     public async Task<TicketResponse> CreateAsync(CreateTicketRequest request, CancellationToken ct)
     {
-        var ticket = Ticket.Open(tenant.TenantId, request.Title, request.Description, request.Priority);
+        var ticket = Ticket.Open(currentUser.TenantId, currentUser.UserId, request.Title, request.Description, request.Priority);
         await repository.AddAsync(ticket, ct);
         await repository.SaveChangesAsync(ct);
         return TicketResponse.From(ticket);

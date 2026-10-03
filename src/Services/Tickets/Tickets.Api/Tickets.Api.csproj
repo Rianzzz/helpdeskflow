@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Tickets.Application\Tickets.Application.csproj" />
     <ProjectReference Include="..\Tickets.Infrastructure\Tickets.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\HelpDeskFlow.Auth\HelpDeskFlow.Auth.csproj" />
   </ItemGroup>
 
 </Project>
