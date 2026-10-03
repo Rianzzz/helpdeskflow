@@ -1,0 +1,29 @@
+# Aplicado aos Deployments com helpdeskflow/uses-database=true: endurece o initContainer "migrate" (mesma imagem do app).
+# Ele precisa da mesma configuração do app: o ASP.NET valida a chave JWT ao montar o host, mesmo no modo --migrate-only.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: not-important
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: migrate
+          envFrom:
+            - configMapRef: { name: helpdeskflow-config }
+          env:
+            - name: Jwt__SigningKey
+              valueFrom: { secretKeyRef: { name: helpdeskflow-secrets, key: jwt-signing-key } }
+            - name: RabbitMq__Password
+              valueFrom: { secretKeyRef: { name: helpdeskflow-secrets, key: rabbitmq-password } }
+            - name: HOME
+              value: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }

@@ -1,0 +1,57 @@
+# Aplicado a TODO Deployment com o rótulo helpdeskflow/runtime=dotnet (veja kustomization.yaml).
+# Um só lugar para o que precisa ser igual em todos os serviços .NET: segurança do pod, probes, recursos, configuração.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: not-important # o nome real vem do alvo (target) do patch
+spec:
+  template:
+    spec:
+      # Nenhum serviço fala com a API do Kubernetes: não monta o token da conta de serviço no pod.
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654 # usuário "app" da imagem oficial do ASP.NET
+        runAsGroup: 1654
+        fsGroup: 1654
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: app
+          envFrom:
+            - configMapRef: { name: helpdeskflow-config }
+          env:
+            - name: Jwt__SigningKey
+              valueFrom: { secretKeyRef: { name: helpdeskflow-secrets, key: jwt-signing-key } }
+            - name: RabbitMq__Password
+              valueFrom: { secretKeyRef: { name: helpdeskflow-secrets, key: rabbitmq-password } }
+            - name: HOME
+              value: /tmp # raiz somente-leitura: qualquer arquivo "do usuário" vai para o volume temporário
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 100m, memory: 160Mi }
+            limits: { cpu: "1", memory: 384Mi }
+          # startupProbe dá folga para o primeiro boot; depois, liveness reinicia um pod travado e readiness
+          # tira do balanceamento um pod que perdeu o banco/RabbitMQ (sem reiniciá-lo).
+          startupProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: 2
+            failureThreshold: 45
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+          lifecycle:
+            preStop:
+              exec: { command: ["sleep", "5"] } # dá tempo de o Service parar de enviar tráfego antes de o processo encerrar
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: { sizeLimit: 64Mi } }

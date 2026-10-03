@@ -1,0 +1,10 @@
+# Cluster local (kind = "Kubernetes IN Docker"): o cluster inteiro roda dentro de um contêiner. Descartável.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: helpdeskflow
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # Só em 127.0.0.1: o cluster de teste não fica exposto para a sua rede local.
+      - { containerPort: 30080, hostPort: 8088, listenAddress: "127.0.0.1", protocol: TCP } # front-end (nginx)
+      - { containerPort: 30090, hostPort: 8089, listenAddress: "127.0.0.1", protocol: TCP } # gateway (API)

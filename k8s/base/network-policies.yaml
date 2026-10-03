@@ -1,0 +1,121 @@
+# REDE: tudo proibido por padrão; só abrimos o caminho que a arquitetura usa.
+#
+#   internet/ingress ──► web ──► gateway ──► identity | tickets | tenants | notifications ──► postgres, rabbitmq
+#
+# Se um serviço for invadido, ele NÃO consegue falar com os outros nem com a internet: só com o que está listado aqui.
+# (Exige um CNI que aplique NetworkPolicy; kindnet, Calico e Cilium aplicam.)
+
+# 1) Nega todo tráfego de entrada e de saída de todos os pods do namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# 2) Todos podem consultar o DNS do cluster (sem isso nenhum nome de Service resolveria).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# 3) web: recebe tráfego de usuários (via ingress/NodePort) e só fala com o gateway.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: web }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 8080 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: gateway }
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# 4) gateway: só o web fala com ele; ele fala só com os quatro serviços.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: gateway }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: web }
+      ports:
+        - { protocol: TCP, port: 8080 }
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - { key: app.kubernetes.io/name, operator: In, values: [identity, tickets, tenants, notifications] }
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# 5) Os quatro serviços: só o gateway entra; eles falam só com o PostgreSQL e o RabbitMQ.
+#    Não conversam entre si por HTTP: a comunicação entre serviços é por eventos (RabbitMQ).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-services
+spec:
+  podSelector:
+    matchLabels: { helpdeskflow/tier: backend }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: gateway }
+      ports:
+        - { protocol: TCP, port: 8080 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: postgres }
+      ports:
+        - { protocol: TCP, port: 5432 }
+    - to:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: rabbitmq }
+      ports:
+        - { protocol: TCP, port: 5672 }
+---
+# 6) Dados: só os serviços com banco chegam ao PostgreSQL e ao RabbitMQ (e só nas portas de aplicação).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: data-stores
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: In, values: [postgres, rabbitmq] }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { helpdeskflow/tier: backend }
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 5672 }

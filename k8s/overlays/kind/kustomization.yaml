@@ -1,0 +1,40 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Overlay para o cluster LOCAL (kind): base + PostgreSQL e RabbitMQ dentro do cluster + portas de acesso no seu computador.
+namespace: helpdeskflow
+
+resources:
+  - ../../base
+  - ../../infra
+
+images:
+  - { name: helpdeskflow/identity, newTag: local }
+  - { name: helpdeskflow/tickets, newTag: local }
+  - { name: helpdeskflow/tenants, newTag: local }
+  - { name: helpdeskflow/notifications, newTag: local }
+  - { name: helpdeskflow/gateway, newTag: local }
+  - { name: helpdeskflow/web, newTag: local }
+
+patches:
+  # O kind não tem load balancer nem ingress: expomos o front-end e o gateway por NodePort (mapeados em 127.0.0.1 pelo cluster.yaml).
+  - target: { kind: Service, name: web }
+    patch: |-
+      - { op: replace, path: /spec/type, value: NodePort }
+      - { op: add, path: /spec/ports/0/nodePort, value: 30080 }
+  - target: { kind: Service, name: gateway }
+    patch: |-
+      - { op: replace, path: /spec/type, value: NodePort }
+      - { op: add, path: /spec/ports/0/nodePort, value: 30090 }
+  # Com o gateway exposto para testes, a NetworkPolicy dele aceita conexões de fora do cluster (só neste overlay).
+  - target: { kind: NetworkPolicy, name: gateway }
+    patch: |-
+      - op: replace
+        path: /spec/ingress
+        value:
+          - ports:
+              - { protocol: TCP, port: 8080 }
+  # Os testes de navegador fazem muitos logins por minuto do mesmo IP: sobe o limite (só neste overlay de teste).
+  - target: { kind: ConfigMap, name: helpdeskflow-config }
+    patch: |-
+      - { op: add, path: /data/RateLimiting__AuthPermitPerMinute, value: "1000" }

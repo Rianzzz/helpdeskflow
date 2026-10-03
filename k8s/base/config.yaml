@@ -1,0 +1,34 @@
+# Configuração NÃO secreta, compartilhada pelos serviços. Segredos (JWT, senhas) ficam no Secret "helpdeskflow-secrets",
+# que NUNCA é versionado: veja k8s/README.md.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: helpdeskflow-config
+  labels:
+    app.kubernetes.io/part-of: helpdeskflow
+data:
+  ASPNETCORE_ENVIRONMENT: Production
+
+  # Dependências (em produção, aponte para serviços gerenciados trocando estes valores no overlay).
+  POSTGRES_HOST: postgres
+  RabbitMq__Host: rabbitmq
+  RabbitMq__Port: "5672"
+  RabbitMq__User: helpdesk
+
+  # As migrations rodam num initContainer (modo --migrate-only), não ao iniciar o servidor: com várias réplicas,
+  # cada pod migrando "por conta própria" ao subir seria uma corrida desnecessária.
+  Database__MigrateOnStartup: "false"
+
+  # TLS termina no ingress; aqui dentro falamos HTTP.
+  Https__Redirect: "false"
+
+  # IP real do cliente: aceitamos X-Forwarded-For SÓ de dentro da rede de pods (e a NetworkPolicy limita QUEM pode falar com
+  # cada serviço). Ajuste para o CIDR de pods do seu cluster, se for diferente (kind usa 10.244.0.0/16, dentro de 10/8).
+  ForwardedHeaders__KnownNetworks__0: 10.0.0.0/8
+
+  # O gateway encontra os serviços pelo nome (DNS do Kubernetes).
+  ReverseProxy__Clusters__identity__Destinations__identity-1__Address: http://identity:8080/
+  ReverseProxy__Clusters__tickets__Destinations__tickets-1__Address: http://tickets:8080/
+  ReverseProxy__Clusters__tenants__Destinations__tenants-1__Address: http://tenants:8080/
+  ReverseProxy__Clusters__notifications__Destinations__notifications-1__Address: http://notifications:8080/
+  ReverseProxy__Clusters__notifications-hub__Destinations__notifications-hub-1__Address: http://notifications:8080/

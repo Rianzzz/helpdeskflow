@@ -1,0 +1,95 @@
+# PostgreSQL para DESENVOLVIMENTO/TESTE (um único pod com disco). Em produção use um serviço gerenciado
+# (RDS, Cloud SQL, Azure Database...) ou um operador (CloudNativePG) e aponte POSTGRES_HOST no ConfigMap para ele.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  labels:
+    app.kubernetes.io/part-of: helpdeskflow
+data:
+  # Um banco por serviço: ninguém lê as tabelas de outro serviço (só conversam por eventos).
+  init-databases.sql: |
+    CREATE DATABASE helpdesk_tickets;
+    CREATE DATABASE helpdesk_identity;
+    CREATE DATABASE helpdesk_notifications;
+    CREATE DATABASE helpdesk_tenants;
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: helpdeskflow
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/part-of: helpdeskflow
+        helpdeskflow/tier: data
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60 # dá tempo de o PostgreSQL fechar com segurança
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999 # usuário "postgres" da imagem oficial
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: postgres
+          image: postgres:17
+          ports:
+            - { name: postgres, containerPort: 5432 }
+          env:
+            - { name: POSTGRES_USER, value: helpdesk }
+            - { name: POSTGRES_DB, value: helpdesk }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: helpdeskflow-secrets, key: postgres-password } }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata } # subpasta: o ponto de montagem tem "lost+found"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "helpdesk", "-d", "helpdesk"] }
+            periodSeconds: 5
+          livenessProbe:
+            exec: { command: ["pg_isready", "-U", "helpdesk", "-d", "helpdesk"] }
+            periodSeconds: 20
+            failureThreshold: 6
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d, readOnly: true }
+            - { name: run, mountPath: /var/run/postgresql }
+      volumes:
+        - { name: init, configMap: { name: postgres-init } }
+        - { name: run, emptyDir: { sizeLimit: 8Mi } }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: helpdeskflow
+spec:
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - { name: postgres, port: 5432, targetPort: postgres }

@@ -1,0 +1,48 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# EXEMPLO de produção (não é aplicado pelo script local). O que muda em relação ao overlay "kind":
+#   - NÃO inclui ../../infra: PostgreSQL e RabbitMQ devem ser serviços gerenciados (ou operadores) com backup e alta
+#     disponibilidade. Aponte POSTGRES_HOST / RabbitMq__Host no ConfigMap (patch abaixo) para eles.
+#   - 2+ réplicas, autoscaling (HPA), PodDisruptionBudget e distribuição entre nós/zonas.
+#   - Ingress com TLS na frente do nginx (web), que é a ÚNICA porta de entrada; o gateway segue interno.
+#   - Imagens por versão fixa (nunca "latest"), vindas do seu registro.
+namespace: helpdeskflow
+
+resources:
+  - ../../base
+  - ingress.yaml
+  - hpa.yaml
+  - pdb.yaml
+
+images:
+  # Troque pelo seu registro e pela versão (de preferência o digest: newTag -> digest: sha256:...).
+  - { name: helpdeskflow/identity, newName: ghcr.io/SEU-USUARIO/helpdeskflow-identity, newTag: "1.0.0" }
+  - { name: helpdeskflow/tickets, newName: ghcr.io/SEU-USUARIO/helpdeskflow-tickets, newTag: "1.0.0" }
+  - { name: helpdeskflow/tenants, newName: ghcr.io/SEU-USUARIO/helpdeskflow-tenants, newTag: "1.0.0" }
+  - { name: helpdeskflow/notifications, newName: ghcr.io/SEU-USUARIO/helpdeskflow-notifications, newTag: "1.0.0" }
+  - { name: helpdeskflow/gateway, newName: ghcr.io/SEU-USUARIO/helpdeskflow-gateway, newTag: "1.0.0" }
+  - { name: helpdeskflow/web, newName: ghcr.io/SEU-USUARIO/helpdeskflow-web, newTag: "1.0.0" }
+
+patches:
+  # Réplicas mínimas (o HPA passa a controlar o número depois). notifications fica em 1: o SignalR guarda as conexões
+  # na memória do pod; para ter mais de uma réplica é preciso um backplane (Redis), que ainda não existe.
+  - target: { kind: Deployment, name: "identity|tickets|tenants|gateway|web" }
+    patch: |-
+      - { op: replace, path: /spec/replicas, value: 2 }
+  # Espalha as réplicas entre nós: se um nó cair, o serviço continua no outro.
+  - target: { kind: Deployment, name: "identity|tickets|tenants|gateway|web|notifications" }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/topologySpreadConstraints
+        value:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels: { app.kubernetes.io/part-of: helpdeskflow }
+  # Serviços gerenciados no lugar dos StatefulSets de desenvolvimento.
+  - target: { kind: ConfigMap, name: helpdeskflow-config }
+    patch: |-
+      - { op: replace, path: /data/POSTGRES_HOST, value: "SEU-POSTGRES.exemplo.internal" }
+      - { op: replace, path: /data/RabbitMq__Host, value: "SEU-RABBITMQ.exemplo.internal" }

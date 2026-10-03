@@ -1,0 +1,13 @@
+# Namespace da plataforma, com o Pod Security Standard "restricted" ATIVO (o mais rígido do Kubernetes):
+# o cluster RECUSA qualquer pod que rode como root, tenha capabilities extras, use hostPath, etc.
+# Isto funciona como um teste automático dos manifestos: se alguém afrouxar a segurança de um pod, ele nem sobe.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: helpdeskflow
+  labels:
+    app.kubernetes.io/part-of: helpdeskflow
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

@@ -1,0 +1,43 @@
+# Autoscaling horizontal: sobe/desce réplicas conforme o uso de CPU (precisa do metrics-server no cluster).
+# Só os serviços sem estado em memória escalam. notifications NÃO entra (veja o comentário no kustomization.yaml).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: tickets }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: tickets }
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300 # evita "sobe e desce" a cada oscilação de carga
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: identity }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: identity }
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: gateway }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: gateway }
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300

@@ -163,3 +163,72 @@ jobs:
       - name: Derrubar
         if: always()
         run: docker compose --profile apps down -v
+
+  kubernetes:
+    name: Kubernetes (kind) - manifestos, seguranca do cluster e testes de navegador
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: [build-and-test, web]
+    steps:
+      - uses: actions/checkout@v5
+
+      # Instala so o binario do kind; quem cria o cluster (com as portas mapeadas) e o nosso script.
+      - uses: helm/kind-action@v1
+        with:
+          install_only: true
+
+      - name: Os manifestos renderizam (todos os overlays)
+        run: |
+          kubectl kustomize k8s/overlays/kind > /dev/null
+          kubectl kustomize k8s/overlays/production-example > /dev/null
+
+      - name: Criar o cluster, construir as imagens e subir a plataforma (Pod Security restricted)
+        run: bash scripts/k8s-kind.sh up
+
+      - name: O overlay de producao e aceito pelo servidor do cluster (dry-run)
+        run: kubectl kustomize k8s/overlays/production-example | kubectl apply --dry-run=server -f -
+
+      - name: Teste de fumaca contra o cluster
+        run: bash scripts/smoke-test.sh http://localhost:8089 http://localhost:8088
+
+      - name: Garantias do cluster (Pod Security, NetworkPolicy, matar pods)
+        run: bash scripts/k8s-verify.sh
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Instalar dependencias do front e o Chromium do Playwright
+        working-directory: web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Testes de navegador (Playwright) contra o cluster
+        working-directory: web
+        env:
+          E2E_BASE_URL: http://localhost:8088
+          E2E_CAN_RESTART_SERVICES: "1"
+          E2E_RESTART_NOTIFICATIONS_CMD: kubectl -n helpdeskflow rollout restart deployment/notifications && kubectl -n helpdeskflow rollout status deployment/notifications --timeout=120s
+        run: npm run e2e
+
+      - name: Guardar relatorio do Playwright (screenshots e traces das falhas)
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report-k8s
+          path: |
+            web/playwright-report
+            web/test-results
+          if-no-files-found: ignore
+
+      - name: Diagnostico do cluster (se algo falhou)
+        if: failure()
+        run: |
+          kubectl -n helpdeskflow get pods -o wide
+          kubectl -n helpdeskflow describe pods | tail -n 150
+          for d in identity tickets tenants notifications gateway web; do
+            echo "=== $d"; kubectl -n helpdeskflow logs "deployment/$d" --all-containers --tail=60 || true
+          done

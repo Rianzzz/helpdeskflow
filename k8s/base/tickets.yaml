@@ -1,0 +1,56 @@
+# Tickets: chamados, conversa, SLA (job em segundo plano), Outbox (PostgreSQL + RabbitMQ).
+# Segurança do pod, probes e recursos vêm de patches/ (iguais para todos os serviços .NET).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tickets
+  labels:
+    app.kubernetes.io/name: tickets
+    app.kubernetes.io/part-of: helpdeskflow
+    helpdeskflow/runtime: dotnet
+    helpdeskflow/uses-database: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tickets
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } # nunca derruba o único pod antes de o novo estar pronto
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tickets
+        app.kubernetes.io/part-of: helpdeskflow
+        helpdeskflow/tier: backend
+    spec:
+      initContainers:
+        - name: migrate # aplica as migrations do banco e encerra; o app só sobe depois (réplicas simultâneas são seguras)
+          image: helpdeskflow/tickets:dev
+          args: ["--migrate-only"]
+          env: &db-env
+            - name: POSTGRES_HOST
+              valueFrom: { configMapKeyRef: { name: helpdeskflow-config, key: POSTGRES_HOST } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: helpdeskflow-secrets, key: postgres-password } }
+            - name: ConnectionStrings__TicketsDb
+              value: Host=$(POSTGRES_HOST);Port=5432;Database=helpdesk_tickets;Username=helpdesk;Password=$(POSTGRES_PASSWORD)
+      containers:
+        - name: app
+          image: helpdeskflow/tickets:dev
+          ports:
+            - { name: http, containerPort: 8080 }
+          env: *db-env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tickets
+  labels:
+    app.kubernetes.io/name: tickets
+    app.kubernetes.io/part-of: helpdeskflow
+spec:
+  selector:
+    app.kubernetes.io/name: tickets
+  ports:
+    - { name: http, port: 8080, targetPort: http }

@@ -1,0 +1,36 @@
+# PodDisruptionBudget: durante manutenção do cluster (drenar um nó), o Kubernetes só remove um pod se restar ao menos
+# um no ar. Sem isso, atualizar os nós poderia derrubar todas as réplicas de um serviço ao mesmo tempo.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: identity }
+spec:
+  maxUnavailable: 1
+  selector: { matchLabels: { app.kubernetes.io/name: identity } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: tickets }
+spec:
+  maxUnavailable: 1
+  selector: { matchLabels: { app.kubernetes.io/name: tickets } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: tenants }
+spec:
+  maxUnavailable: 1
+  selector: { matchLabels: { app.kubernetes.io/name: tenants } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: gateway }
+spec:
+  maxUnavailable: 1
+  selector: { matchLabels: { app.kubernetes.io/name: gateway } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: web }
+spec:
+  maxUnavailable: 1
+  selector: { matchLabels: { app.kubernetes.io/name: web } }

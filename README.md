@@ -278,7 +278,23 @@ da **saga** em tempo quase real), login, chamados (filtros, busca, criação, de
    `docker compose --profile apps` (segredos efêmeros gerados na hora), roda `scripts/smoke-test.sh` pelo gateway (saga de onboarding,
    login, chamado, notificação) e depois os **testes de navegador do Playwright**; se algo falhar, guarda o relatório com screenshots e traces
 
+4. **Kubernetes (kind)**: sobe a plataforma num cluster real (Pod Security `restricted`), roda o teste de fumaça, `scripts/k8s-verify.sh`
+   (pod privilegiado recusado, NetworkPolicy bloqueando o que não é da arquitetura, matar pods sem derrubar a plataforma) e os testes
+   de navegador, e valida o overlay de produção com `kubectl apply --dry-run=server`
+
 O mesmo teste de fumaça serve localmente: `./scripts/smoke-test.sh http://localhost:5000 http://localhost:3000` (o segundo argumento, opcional, valida também o nginx: SPA, proxy da API e cabeçalhos).
+
+### Kubernetes
+
+```bash
+./scripts/k8s-kind.sh up      # cluster local (kind) com tudo no ar: front http://localhost:8088, API http://localhost:8089
+./scripts/k8s-verify.sh       # garantias do cluster: Pod Security, NetworkPolicy, resiliência
+./scripts/k8s-kind.sh down
+```
+
+Manifestos com Kustomize (`k8s/base` + overlays), pods endurecidos (não-root, sistema de arquivos somente leitura, sem capabilities),
+NetworkPolicy "nega tudo, libera só o necessário", migrações em `initContainer`, probes, atualização sem queda e um exemplo de produção
+(Ingress com TLS, HPA, PodDisruptionBudget). As decisões e os porquês estão em [`k8s/README.md`](k8s/README.md).
 
 ### Gateway (borda)
 
@@ -301,3 +317,5 @@ O mesmo teste de fumaça serve localmente: `./scripts/smoke-test.sh http://local
 - [x] Fase 4 — eventos com RabbitMQ (Identity → Tickets/Notifications), serviço Notifications, DLQ, idempotência
 - [x] Fase 5 — Outbox, SLA com job agendado, serviço Tenants e saga de onboarding com compensação e timeout
 - [x] Fase 6 — testes (unitários + integração com Testcontainers), observabilidade (Serilog, OpenTelemetry, health), Docker e CI/CD
+- [x] Kubernetes — Kustomize, Pod Security `restricted`, NetworkPolicy, initContainer de migração, probes, exemplo de produção, CI com kind
+- [ ] Redis como backplane do SignalR (para escalar o Notifications para 2+ réplicas)

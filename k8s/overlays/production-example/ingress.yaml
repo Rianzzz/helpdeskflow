@@ -1,0 +1,27 @@
+# Única entrada pública: HTTPS -> nginx (web) -> gateway (interno). O TLS termina aqui; o certificado vem do cert-manager.
+# Requer um Ingress Controller instalado no cluster (ex.: ingress-nginx) e o cert-manager com um ClusterIssuer.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: helpdeskflow
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # WebSocket do SignalR (/hubs) fica aberto por bastante tempo.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [helpdesk.exemplo.com]
+      secretName: helpdeskflow-tls
+  rules:
+    - host: helpdesk.exemplo.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port: { name: http }

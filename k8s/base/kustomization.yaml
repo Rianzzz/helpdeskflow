@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Tudo cai no namespace "helpdeskflow" (criado por namespace.yaml, com Pod Security "restricted").
+namespace: helpdeskflow
+
+resources:
+  - namespace.yaml
+  - config.yaml
+  - identity.yaml
+  - tickets.yaml
+  - tenants.yaml
+  - notifications.yaml
+  - gateway.yaml
+  - web.yaml
+  - network-policies.yaml
+
+patches:
+  # Hardening, probes, recursos e configuração iguais para TODOS os serviços .NET (um lugar só).
+  - path: patches/dotnet-hardening.yaml
+    target:
+      kind: Deployment
+      labelSelector: helpdeskflow/runtime=dotnet
+  # initContainer de migrations dos serviços com banco.
+  - path: patches/migrate-initcontainer.yaml
+    target:
+      kind: Deployment
+      labelSelector: helpdeskflow/uses-database=true
+
+# As imagens usam a tag "dev" aqui; cada overlay a troca (kind: "local"; produção: o SHA do commit).
+images:
+  - { name: helpdeskflow/identity, newTag: dev }
+  - { name: helpdeskflow/tickets, newTag: dev }
+  - { name: helpdeskflow/tenants, newTag: dev }
+  - { name: helpdeskflow/notifications, newTag: dev }
+  - { name: helpdeskflow/gateway, newTag: dev }
+  - { name: helpdeskflow/web, newTag: dev }

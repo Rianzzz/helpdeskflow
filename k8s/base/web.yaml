@@ -1,0 +1,101 @@
+# Web: nginx servindo o front-end (React) e repassando /api e /hubs ao gateway. É a ÚNICA porta de entrada de usuários.
+# nginx-unprivileged roda como UID 101. Raiz somente-leitura: as pastas que o nginx precisa escrever são volumes em memória.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-real-ip
+  labels:
+    app.kubernetes.io/part-of: helpdeskflow
+data:
+  # Atrás do ingress, o IP da conexão é o do ingress. Confiamos no X-Forwarded-For SÓ de dentro da rede de pods para o
+  # gateway enxergar o IP REAL do cliente (rate limit por IP). A NetworkPolicy limita quem pode falar com este pod.
+  real-ip.conf: |
+    set_real_ip_from 10.0.0.0/8;
+    real_ip_header X-Forwarded-For;
+    real_ip_recursive on;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: helpdeskflow
+    helpdeskflow/runtime: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+        app.kubernetes.io/part-of: helpdeskflow
+        helpdeskflow/tier: edge
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: app
+          image: helpdeskflow/web:dev
+          ports:
+            - { name: http, containerPort: 8080 }
+          env:
+            # O nginx.conf é um template: o endereço do gateway entra por variável de ambiente (o DNS do cluster, o
+            # nginx descobre sozinho pelo /etc/resolv.conf).
+            # Precisa ser o nome COMPLETO (FQDN): o resolver do nginx não usa a lista "search" do resolv.conf, então
+            # o nome curto "gateway" falharia (SERVFAIL). Se mudar o namespace, mude aqui também.
+            - { name: NGINX_GATEWAY_URL, value: "http://gateway.helpdeskflow.svc.cluster.local:8080" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { cpu: 300m, memory: 96Mi }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+          lifecycle:
+            preStop:
+              exec: { command: ["sleep", "5"] } # dá tempo de o Service parar de enviar tráfego antes de o nginx encerrar
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: cache, mountPath: /var/cache/nginx }
+            - { name: conf, mountPath: /etc/nginx/conf.d } # o entrypoint gera o default.conf a partir do template
+            - { name: real-ip, mountPath: /etc/nginx/real-ip.d, readOnly: true }
+      volumes:
+        - { name: tmp, emptyDir: { sizeLimit: 16Mi } }
+        - { name: cache, emptyDir: { sizeLimit: 64Mi } }
+        - { name: conf, emptyDir: { sizeLimit: 1Mi } }
+        - { name: real-ip, configMap: { name: web-real-ip } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: helpdeskflow
+spec:
+  selector:
+    app.kubernetes.io/name: web
+  ports:
+    - { name: http, port: 8080, targetPort: http }
