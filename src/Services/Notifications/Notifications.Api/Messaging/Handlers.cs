@@ -99,7 +99,7 @@ public class TicketCreatedHandler(NotificationsDbContext db, NotificationWriter 
 
         var notifications = staff
             .Select(u => Notification.Create(e.TenantId, u,
-                $"Novo chamado: {e.Title}", $"Um chamado de prioridade {e.Priority} foi aberto: \"{e.Title}\"."))
+                $"Novo chamado: {e.Title}", $"Um chamado de prioridade {PriorityText.ToPortuguese(e.Priority)} foi aberto: \"{e.Title}\"."))
             .ToList();
 
         await writer.TryWriteAsync(e.EventId, nameof(TicketCreatedHandler), notifications, ct);
@@ -176,7 +176,7 @@ public class TicketSlaBreachedHandler(NotificationsDbContext db, NotificationWri
         var notifications = admins
             .Select(u => Notification.Create(e.TenantId, u,
                 $"SLA estourado: {e.Title}",
-                $"O chamado \"{e.Title}\" (prioridade {e.Priority}) está há {e.MinutesWaiting} min sem responsável."))
+                $"O chamado \"{e.Title}\" (prioridade {PriorityText.ToPortuguese(e.Priority)}) está há {e.MinutesWaiting} min sem responsável."))
             .ToList();
 
         await writer.TryWriteAsync(e.EventId, nameof(TicketSlaBreachedHandler), notifications, ct);
