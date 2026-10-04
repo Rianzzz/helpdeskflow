@@ -36,7 +36,7 @@ Tickets ──TicketCreated/Assigned/Resolved──► Notifications (grava a no
 
 - Um exchange `topic` (`helpdeskflow.events`); cada serviço tem **a sua fila por evento** (`<serviço>.<evento>`)
 - **Publisher confirms** (só considera publicado quando o broker confirmou), mensagens persistentes
-- **Ack manual** depois de processar, 3 tentativas com espera crescente e então **DLQ** (`*.dlq`) para análise
+- **Ack manual** depois de processar, 5 tentativas com espera crescente (0,5 s, 1 s, 2 s, 4 s) e então **DLQ** (`*.dlq`) para análise
 - **Idempotência**: entregas duplicadas não geram notificações em dobro (tabela de eventos já processados)
 - O Tickets não chama o Identity a cada requisição: valida o responsável por uma **cópia local** mantida por eventos
   (consistência eventual: se um usuário acabou de ser criado, pode levar instantes para ser reconhecido)
