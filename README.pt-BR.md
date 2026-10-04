@@ -8,6 +8,8 @@ Um help desk para várias empresas, feito com quatro serviços .NET 9 atrás de 
 
 ![Conversa de um chamado, com uma nota interna que só a equipe vê](docs/images/ticket-conversation.png)
 
+*A visão do atendente em um chamado. A mensagem amarela é uma nota interna: o cliente nunca a recebe, nem como notificação.*
+
 Fiz para aprender como um sistema assim é dividido, protegido, testado e implantado. As partes interessantes estão menos nas telas do que no que fica por trás delas.
 
 ## O que tem
@@ -21,16 +23,25 @@ Fiz para aprender como um sistema assim é dividido, protegido, testado e implan
 - **Kubernetes.** Manifestos com Kustomize, Pod Security `restricted`, NetworkPolicy que nega tudo por padrão, migrações em init containers e atualização sem queda. Scripts conferem essas regras, inclusive matando pods enquanto há requisições.
 - **Observabilidade.** Logs estruturados, traces distribuídos que continuam ligados através do Outbox e health checks.
 
-<table>
-<tr>
-<td><img src="docs/images/tickets.png" alt="Lista de chamados com filtros" width="520"></td>
-<td><img src="docs/images/mobile-tickets.png" alt="A mesma lista no celular" width="170"></td>
-</tr>
-<tr>
-<td><img src="docs/images/users.png" alt="Usuários e limite do plano" width="520"></td>
-<td></td>
-</tr>
-</table>
+## Telas
+
+Todas as telas vêm da plataforma rodando (`cd web && npm run screenshots` as gera de novo).
+
+**Chamados.** Filtros por status, busca e etiquetas de prioridade e status. A equipe vê todos os chamados da empresa; o cliente só vê os próprios.
+
+<img src="docs/images/tickets.png" alt="Lista de chamados com filtros de status e busca" width="760">
+
+**Notificações ao vivo.** O contador no menu e esta lista se atualizam sozinhos pelo SignalR. O indicador verde "Ao vivo", no canto inferior esquerdo, mostra que a conexão está de pé; se ela cair, a tela volta a consultar a API.
+
+<img src="docs/images/notifications.png" alt="Lista de notificações com o contador de não lidas no menu" width="760">
+
+**Usuários e limite do plano.** O administrador gerencia a equipe. O plano Free permite 5 usuários, e o servidor recusa o excedente mesmo que o botão estivesse escondido.
+
+<img src="docs/images/users.png" alt="Lista de usuários mostrando 3 de 5 usuários do plano Free" width="760">
+
+**No celular.** A mesma lista, com o menu recolhido.
+
+<img src="docs/images/mobile-tickets.png" alt="Lista de chamados no celular" width="260">
 
 ## Arquitetura
 

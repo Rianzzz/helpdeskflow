@@ -8,6 +8,8 @@ A help desk for multiple companies, built as four .NET 9 services behind a gatew
 
 ![A ticket conversation, with an internal note only staff can see](docs/images/ticket-conversation.png)
 
+*The agent's view of a ticket. The yellow message is an internal note: the customer never receives it, not even as a notification.*
+
 I built it to learn how a system like this is split, secured, tested and deployed, so the interesting parts are less the screens than what sits behind them.
 
 ## What's in it
@@ -21,16 +23,25 @@ I built it to learn how a system like this is split, secured, tested and deploye
 - **Kubernetes.** Kustomize manifests, Pod Security `restricted`, a default-deny NetworkPolicy, migrations in init containers and rolling updates without downtime. Scripts check these rules, including killing pods while requests are running.
 - **Observability.** Structured logs, distributed traces that stay connected across the Outbox, and health checks.
 
-<table>
-<tr>
-<td><img src="docs/images/tickets.png" alt="Ticket list with filters" width="520"></td>
-<td><img src="docs/images/mobile-tickets.png" alt="The same list on a phone" width="170"></td>
-</tr>
-<tr>
-<td><img src="docs/images/users.png" alt="Users and plan limit" width="520"></td>
-<td></td>
-</tr>
-</table>
+## Screens
+
+All screens come from the running platform (`cd web && npm run screenshots` regenerates them).
+
+**Tickets.** Filters by status, search, and priority and status badges. Staff see every ticket of the company; a customer only sees their own.
+
+<img src="docs/images/tickets.png" alt="Ticket list with status filters and search" width="760">
+
+**Live notifications.** The counter in the menu and this list update on their own through SignalR. The green "Ao vivo" indicator at the bottom left shows the connection is up; if it drops, the screen falls back to polling.
+
+<img src="docs/images/notifications.png" alt="Notification list with the unread counter in the menu" width="760">
+
+**Users and plan limit.** The admin manages the team. The Free plan allows 5 users, enforced on the server even if the button were hidden.
+
+<img src="docs/images/users.png" alt="User list showing 3 of 5 users on the Free plan" width="760">
+
+**On a phone.** The same list, with the menu collapsed.
+
+<img src="docs/images/mobile-tickets.png" alt="Ticket list on a phone" width="260">
 
 ## Architecture
 
