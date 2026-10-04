@@ -1,58 +1,36 @@
-<div align="center">
-
 # HelpDeskFlow
 
-**A multi-tenant help desk SaaS built as .NET 9 microservices, with a React front-end, event-driven communication, real-time updates and a Kubernetes deployment.**
+[![CI](https://github.com/Rianzzz/helpdeskflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Rianzzz/helpdeskflow/actions/workflows/ci.yml) ![License](https://img.shields.io/badge/license-MIT-green)
 
-[![CI](https://github.com/Rianzzz/helpdeskflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Rianzzz/helpdeskflow/actions/workflows/ci.yml)
-![.NET](https://img.shields.io/badge/.NET-9-512BD4?logo=dotnet&logoColor=white)
-![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
-![RabbitMQ](https://img.shields.io/badge/RabbitMQ-4-FF6600?logo=rabbitmq&logoColor=white)
-![Kubernetes](https://img.shields.io/badge/Kubernetes-ready-326CE5?logo=kubernetes&logoColor=white)
-![License](https://img.shields.io/badge/license-MIT-green)
+English · [Português](README.pt-BR.md)
 
-**English** · [Português](README.pt-BR.md)
+A help desk for multiple companies, built as four .NET 9 services behind a gateway, with a React front-end. Companies sign up, add their team and customers, and handle support tickets. Each company only sees its own data, and everyone is notified live when a ticket changes.
 
-<img src="docs/images/ticket-conversation.png" alt="Ticket conversation with a staff-only internal note" width="850">
+![A ticket conversation, with an internal note only staff can see](docs/images/ticket-conversation.png)
 
-</div>
+I built it to learn how a system like this is split, secured, tested and deployed, so the interesting parts are less the screens than what sits behind them.
 
-## What it is
+## What's in it
 
-Companies sign up, invite their team and customers, and handle support tickets. Each company is an isolated **tenant**:
-its data, users and plan limits are invisible to every other company. Customers open tickets, agents answer them,
-and everyone is notified **live** when something changes. Internal notes are visible to staff only.
+- **Services.** Identity (login, users, companies), Tickets, Tenants (company profile and plan) and Notifications, behind a YARP gateway. Each service has its own PostgreSQL database and they only talk through RabbitMQ events.
+- **Events that don't get lost.** A service writes the event in the same database transaction as the data (a transactional Outbox) and a background job publishes it afterwards. Consumers ignore duplicates, retry on failure and send what still fails to a dead-letter queue.
+- **Signing up a company.** It touches Identity and Tenants, and there is no transaction across services. It runs as a saga: if the second step fails, the first one is undone, and there is a timeout for the case where nothing answers.
+- **Tenant isolation.** Enforced in the database with EF Core global query filters. The company id always comes from the token, never from the request body.
+- **Authentication.** JWT with rotating refresh tokens, reuse detection, account lockout and rate limiting. Details in [docs/seguranca.md](docs/seguranca.md).
+- **Real time.** SignalR pushes notifications to the browser, with polling as fallback. The token that travels in the URL is redacted from every log.
+- **Kubernetes.** Kustomize manifests, Pod Security `restricted`, a default-deny NetworkPolicy, migrations in init containers and rolling updates without downtime. Scripts check these rules, including killing pods while requests are running.
+- **Observability.** Structured logs, distributed traces that stay connected across the Outbox, and health checks.
 
-It was built to practice production-grade backend engineering end to end: not just endpoints, but how a system like this is
-**split, secured, tested, observed and deployed**.
-
-## Highlights
-
-| | |
-|---|---|
-| **Microservices** | Identity, Tickets, Tenants and Notifications behind a YARP API gateway; one database per service; services talk through events, never through each other's tables. |
-| **Reliable messaging** | RabbitMQ with a **transactional Outbox** (no lost or phantom events), idempotent consumers, retries and a dead-letter queue. |
-| **Distributed workflow** | A choreographed **onboarding saga** (Identity → Tenants → Identity) with compensation and a timeout. |
-| **Multi-tenancy** | Tenant isolation enforced at the database layer (EF Core global query filters); the tenant always comes from the token, never from the request body. |
-| **Security** | JWT with rotating refresh tokens and reuse detection, account lockout, rate limiting, strict CSP, defense in depth. See [docs/seguranca.md](docs/seguranca.md). |
-| **Real time** | SignalR pushes notifications to the browser; polling is the automatic fallback. The token in the URL is redacted from every log. |
-| **Kubernetes** | Kustomize manifests, Pod Security `restricted`, default-deny NetworkPolicies, init-container migrations, zero-downtime rollouts. Verified by automated tests, including killing pods under load. |
-| **Observability** | Structured logs (Serilog), distributed traces that stay connected across the Outbox (OpenTelemetry + Jaeger), health checks. |
-| **Quality** | Unit, integration (real PostgreSQL and RabbitMQ via Testcontainers), component and browser tests, accessibility checks (WCAG AA), all in CI. |
-
-<div align="center">
 <table>
 <tr>
 <td><img src="docs/images/tickets.png" alt="Ticket list with filters" width="520"></td>
-<td><img src="docs/images/mobile-tickets.png" alt="Responsive mobile layout" width="170"></td>
+<td><img src="docs/images/mobile-tickets.png" alt="The same list on a phone" width="170"></td>
 </tr>
 <tr>
 <td><img src="docs/images/users.png" alt="Users and plan limit" width="520"></td>
 <td></td>
 </tr>
 </table>
-</div>
 
 ## Architecture
 
@@ -79,47 +57,45 @@ flowchart LR
     MQ -. events .-> ID
 ```
 
-Services are layered `Api → Infrastructure → Application → Domain`, and the domain depends on nothing. More in
-[docs/arquitetura.md](docs/arquitetura.md) (Portuguese).
+Each service is layered `Api → Infrastructure → Application → Domain`, and the domain depends on nothing. More in [docs/arquitetura.md](docs/arquitetura.md) (Portuguese).
 
-## Tech stack
+## Stack
 
 | Area | Technologies |
 |---|---|
-| Backend | C# · .NET 9 · ASP.NET Core Minimal APIs · EF Core 9 · Npgsql · YARP · SignalR · RabbitMQ.Client |
-| Front-end | React 19 · TypeScript · Vite · Tailwind CSS 4 · React Router · TanStack Query |
-| Data and messaging | PostgreSQL 17 · RabbitMQ 4 |
-| Observability | Serilog · OpenTelemetry · Jaeger · health checks |
-| Testing | xUnit · Testcontainers · Vitest · Testing Library · Playwright · axe-core |
-| Delivery | Docker (multi-stage, non-root) · Docker Compose · Kubernetes (Kustomize, kind) · GitHub Actions |
+| Backend | C#, .NET 9, ASP.NET Core Minimal APIs, EF Core 9, Npgsql, YARP, SignalR, RabbitMQ.Client |
+| Front-end | React 19, TypeScript, Vite, Tailwind CSS 4, React Router, TanStack Query |
+| Data and messaging | PostgreSQL 17, RabbitMQ 4 |
+| Observability | Serilog, OpenTelemetry, Jaeger, health checks |
+| Testing | xUnit, Testcontainers, Vitest, Testing Library, Playwright, axe-core |
+| Delivery | Docker (multi-stage, non-root), Docker Compose, Kubernetes (Kustomize, kind), GitHub Actions |
 
-## Quick start
+## Running it
 
-You need Docker. The whole platform comes up with two commands:
+You need Docker.
 
 ```bash
-cp .env.example .env          # set JWT_SIGNING_KEY (any random string with 32+ bytes)
+cp .env.example .env          # set JWT_SIGNING_KEY to any random string of 32+ bytes
 docker compose --profile apps up -d --build
 ```
 
-Open **http://localhost:3000**, click *Criar empresa* (create company), and the onboarding saga activates it in a couple of seconds.
-The API is at `http://localhost:5000` (gateway); the other services stay on a private Docker network.
+Open http://localhost:3000 and use *Criar empresa* to create a company. The onboarding saga activates it within a couple of seconds. The API is at http://localhost:5000 (the gateway); the other services stay on a private Docker network.
 
 <details>
-<summary><b>Run on Kubernetes (kind)</b></summary>
+<summary>Run on Kubernetes (kind)</summary>
 
 ```bash
 ./scripts/k8s-kind.sh up        # creates the cluster, builds and loads the images, generates random secrets, deploys
 ./scripts/smoke-test.sh http://localhost:8089 http://localhost:8088
-./scripts/k8s-verify.sh         # Pod Security, NetworkPolicy and pod-kill resilience checks
+./scripts/k8s-verify.sh         # Pod Security, NetworkPolicy and pod-kill checks
 ./scripts/k8s-kind.sh down
 ```
 
-Front-end on `http://localhost:8088`, API on `http://localhost:8089`. The decisions behind the manifests are in [k8s/README.md](k8s/README.md).
+The front-end is on http://localhost:8088 and the API on http://localhost:8089. The reasoning behind the manifests is in [k8s/README.md](k8s/README.md).
 </details>
 
 <details>
-<summary><b>Develop with <code>dotnet run</code> and Vite</b></summary>
+<summary>Develop with <code>dotnet run</code> and Vite</summary>
 
 ```bash
 docker compose up -d            # only PostgreSQL and RabbitMQ
@@ -130,37 +106,36 @@ cd web && npm install && npm run dev                                          # 
 
 ## Tests
 
-| Suite | Count | What it covers |
+| Suite | Count | Covers |
 |---|---|---|
 | .NET unit | 92 | domain rules and application services |
-| .NET integration | 66 | the real platform on PostgreSQL and RabbitMQ (Testcontainers): saga, tenant isolation, forged JWTs, refresh-token reuse, idempotency, DLQ, SLA job |
+| .NET integration | 66 | the platform on real PostgreSQL and RabbitMQ (Testcontainers): the saga, tenant isolation, forged JWTs, refresh-token reuse, idempotency, dead-letter queue, SLA job |
 | Front-end (Vitest) | 98 | API client, real-time layer, route guards, forms |
-| Browser (Playwright) | 56 | full user journeys with several people in isolated browsers, security, accessibility (axe, WCAG AA), mobile |
-| Cluster checks | 11 | privileged pod rejected, network paths blocked, 0 failed requests while killing pods |
+| Browser (Playwright) | 56 | full journeys with several people in isolated browsers, security, accessibility (axe, WCAG AA), mobile |
+| Cluster checks | 11 | privileged pod rejected, network paths blocked, no failed requests while pods are killed |
 
-CI runs everything on every push: build and tests, front-end checks, dependency audits, the complete Docker stack with smoke and browser tests,
-and a fresh Kubernetes (kind) cluster. Details in [docs/ci-cd.md](docs/ci-cd.md).
+CI runs all of it on every push: build and tests, front-end checks, dependency audits, the full Docker stack with smoke and browser tests, and a fresh Kubernetes (kind) cluster. See [docs/ci-cd.md](docs/ci-cd.md).
 
-## Design decisions worth reading
+## Decisions
 
-- **Why an Outbox?** Saving the data and publishing the event are two systems; one can fail after the other. The event is written in the *same transaction* as the data and published afterwards, so nothing is lost or invented.
-- **Why a saga with compensation?** Creating a company touches two services and no distributed transaction exists. Each step is local, and failure triggers an explicit undo.
-- **Why events carry no secrets or content?** Passwords never travel in events, and the comment event carries no text: the owning service serves it with the caller's authorization.
-- **Why one replica for Notifications?** SignalR keeps connections in memory. Scaling it needs a Redis backplane, documented as the next step instead of hidden.
+- **Outbox.** Saving the data and publishing the event are two different systems, and one can fail after the other. Writing the event in the same transaction as the data and publishing it later means no event is lost and none is invented.
+- **Saga.** Creating a company touches two services and no distributed transaction exists. Each step is local and a failure triggers an explicit undo.
+- **Events carry no secrets.** Passwords never travel in events, and the comment event has no text. The service that owns the comment serves it, checking who is asking.
+- **One replica of Notifications.** SignalR keeps its connections in memory, so more replicas need a Redis backplane. That is on the roadmap.
 
 ## Documentation
 
-The deep dives are in Portuguese, in [`docs/`](docs): [architecture](docs/arquitetura.md) · [security](docs/seguranca.md) · [features](docs/funcionalidades.md) · [observability and tests](docs/observabilidade-e-testes.md) · [running](docs/executando.md) · [CI/CD](docs/ci-cd.md) · [Kubernetes](k8s/README.md).
+The longer write-ups are in Portuguese, in [`docs/`](docs): [architecture](docs/arquitetura.md), [security](docs/seguranca.md), [features](docs/funcionalidades.md), [observability and tests](docs/observabilidade-e-testes.md), [running](docs/executando.md), [CI/CD](docs/ci-cd.md) and [Kubernetes](k8s/README.md).
 
 ## Roadmap
 
-- [x] Tickets, Identity, API gateway, events, Outbox, SLA job, Tenants and the onboarding saga
+- [x] Tickets, Identity, gateway, events, Outbox, SLA job, Tenants and the onboarding saga
 - [x] Tests, observability, Docker, CI/CD
-- [x] React front-end, Playwright end-to-end tests, real-time notifications (SignalR), ticket conversations, plan limits
+- [x] React front-end, Playwright tests, real-time notifications, ticket conversations, plan limits
 - [x] Kubernetes
-- [ ] Redis backplane for SignalR (scale Notifications beyond one replica)
-- [ ] `httpOnly`-cookie BFF for the refresh token
-- [ ] Plan changes and billing events, attachments, ticket pagination and search
+- [ ] Redis backplane for SignalR, to run more than one Notifications replica
+- [ ] `httpOnly` cookie for the refresh token, through a BFF
+- [ ] Plan changes and billing, attachments, ticket pagination and search
 
 ## License
 
