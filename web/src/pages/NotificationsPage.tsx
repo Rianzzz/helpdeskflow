@@ -43,12 +43,12 @@ export function NotificationsPage() {
             {notifications.data.map((n) => {
               const isUnread = n.readAt === null
               return (
-                <li key={n.id} className={`flex items-start gap-3 px-5 py-4 ${isUnread ? 'bg-brand-50/50' : ''}`}>
-                  <span aria-hidden="true" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${isUnread ? 'bg-brand-600' : 'bg-transparent'}`} />
+                <li key={n.id} className={`flex items-start gap-3 px-4 py-3 ${isUnread ? 'bg-brand-50/60' : ''}`}>
+                  <span aria-hidden="true" className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${isUnread ? 'bg-brand-600' : 'bg-transparent'}`} />
                   <div className="min-w-0 flex-1">
-                    <p className={`text-sm ${isUnread ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}>{n.subject}</p>
-                    <p className="mt-0.5 text-sm text-slate-600">{n.body}</p>
-                    <p className="mt-1 text-xs text-slate-600">{timeAgo(n.createdAt)}</p>
+                    <p className={`text-[13px] ${isUnread ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}>{n.subject}</p>
+                    <p className="mt-0.5 text-[13px] text-slate-600">{n.body}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">{timeAgo(n.createdAt)}</p>
                   </div>
                   {isUnread && (
                     <Button variant="ghost" className="shrink-0" onClick={() => markRead.mutate(n.id)} disabled={markRead.isPending}>

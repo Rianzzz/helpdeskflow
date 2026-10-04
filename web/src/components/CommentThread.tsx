@@ -20,8 +20,8 @@ export function CommentThread({ ticket, isStaff, currentUserId }: CommentThreadP
 
   return (
     <Card className="mb-6">
-      <div className="border-b border-slate-200 px-6 py-4">
-        <h2 className="text-sm font-semibold text-slate-900">Conversa</h2>
+      <div className="border-b border-slate-200 px-5 py-3">
+        <h2 className="text-[13px] font-semibold text-slate-900">Conversa</h2>
         {isStaff && <p className="mt-0.5 text-xs text-slate-600">Notas internas aparecem em destaque e só a equipe consegue vê-las.</p>}
       </div>
 
@@ -48,16 +48,16 @@ function CommentItem({ comment, mine }: { comment: TicketComment; mine: boolean 
   const name = mine ? 'Você' : (comment.authorName ?? 'Usuário')
 
   return (
-    <li className={`flex gap-3 px-6 py-4 ${comment.isInternal ? 'bg-amber-50/70' : ''}`} data-internal={comment.isInternal}>
+    <li className={`flex gap-3 px-5 py-3.5 ${comment.isInternal ? 'bg-amber-50' : ''}`} data-internal={comment.isInternal}>
       <span
         aria-hidden="true"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700"
       >
         {name.charAt(0).toUpperCase()}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-sm font-medium text-slate-900">{name}</span>
+          <span className="text-[13px] font-medium text-slate-900">{name}</span>
           {comment.authorRole && <Badge tone={comment.authorRole === 'Customer' ? 'slate' : 'brand'}>{roleLabel[comment.authorRole]}</Badge>}
           {comment.isInternal && <Badge tone="amber">Nota interna</Badge>}
           <time dateTime={comment.createdAt} title={formatDateTime(comment.createdAt)} className="text-xs text-slate-600">
@@ -65,7 +65,7 @@ function CommentItem({ comment, mine }: { comment: TicketComment; mine: boolean 
           </time>
         </div>
         {/* O texto vem de usuários: é exibido como TEXTO (React escapa), nunca como HTML. */}
-        <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">{comment.body}</p>
+        <p className="mt-0.5 whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-slate-700">{comment.body}</p>
       </div>
     </li>
   )
@@ -116,7 +116,7 @@ function Composer({ ticket, isStaff }: { ticket: Ticket; isStaff: boolean }) {
   return (
     <form
       onSubmit={handleSubmit}
-      className={`border-t px-6 py-4 ${internalMode ? 'border-amber-200 bg-amber-50/70' : 'border-slate-200'}`}
+      className={`border-t px-5 py-4 ${internalMode ? 'border-amber-200 bg-amber-50' : 'border-slate-200'}`}
     >
       <label htmlFor="comment-body" className="mb-1.5 block text-sm font-medium text-slate-700">
         {internalMode ? 'Nota interna (invisível para o cliente)' : 'Sua mensagem'}
@@ -129,7 +129,7 @@ function Composer({ ticket, isStaff }: { ticket: Ticket; isStaff: boolean }) {
         onChange={(e) => setBody(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={internalMode ? 'Escreva um recado para a equipe…' : 'Escreva uma resposta…'}
-        className="block w-full rounded-lg border-0 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm ring-1 ring-slate-300 placeholder:text-slate-500 focus:ring-2 focus:ring-brand-600"
+        className="block w-full rounded-md border-0 bg-white px-2.5 py-1.5 text-sm text-slate-900 ring-1 ring-inset ring-slate-300 placeholder:text-slate-500 focus:ring-2 focus:ring-brand-600"
       />
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">

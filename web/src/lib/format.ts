@@ -20,15 +20,21 @@ export const roleLabel: Record<Role, string> = {
   Customer: 'Cliente',
 }
 
-const relative = new Intl.RelativeTimeFormat('pt-BR', { numeric: 'auto' })
+// Formato curto, como nas ferramentas de atendimento: "há 5 min.", "há 3 h", "ontem".
+const relative = new Intl.RelativeTimeFormat('pt-BR', { numeric: 'auto', style: 'short' })
 const dateTime = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 
-/** "há 5 minutos", "ontem"... Aceita "agora" injetado para facilitar os testes. */
+/** Referência curta e estável de um chamado (primeiros caracteres do id), para citar em conversa: "HD-3F9A". */
+export function ticketRef(id: string): string {
+  return `HD-${id.replace(/-/g, '').slice(0, 4).toUpperCase()}`
+}
+
+/** "há 5 min.", "ontem"... Aceita "agora" injetado para facilitar os testes. */
 export function timeAgo(iso: string, now: Date = new Date()): string {
   const seconds = Math.round((new Date(iso).getTime() - now.getTime()) / 1000)
   const abs = Math.abs(seconds)
 
-  if (abs < 45) return 'agora há pouco'
+  if (abs < 60) return 'agora'
   if (abs < 3600) return relative.format(Math.round(seconds / 60), 'minute')
   if (abs < 86400) return relative.format(Math.round(seconds / 3600), 'hour')
   if (abs < 86400 * 30) return relative.format(Math.round(seconds / 86400), 'day')

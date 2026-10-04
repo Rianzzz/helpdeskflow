@@ -17,7 +17,7 @@ interface NavItem {
 }
 
 const icon = (path: string) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5" aria-hidden="true">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4 shrink-0" aria-hidden="true">
     <path strokeLinecap="round" strokeLinejoin="round" d={path} />
   </svg>
 )
@@ -40,7 +40,7 @@ function LiveIndicator({ status }: { status: RealtimeStatus }) {
 
   return (
     <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-600" data-testid="live-indicator" data-status={status}>
-      <span aria-hidden="true" className={`h-2 w-2 rounded-full ${view.dot}`} />
+      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${view.dot}`} />
       {view.label}
     </p>
   )
@@ -68,22 +68,22 @@ export function Layout() {
   }
 
   const nav = (
-    <nav aria-label="Principal" className="flex-1 space-y-1 px-3">
+    <nav aria-label="Principal" className="flex-1 space-y-0.5 px-2">
       {visible.map((item) => (
         <NavLink
           key={item.to}
           to={item.to}
           onClick={() => setMenuOpen(false)}
           className={({ isActive }) =>
-            `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-              isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            `flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
+              isActive ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
             }`
           }
         >
           {item.icon}
           <span className="flex-1">{item.label}</span>
           {item.badge ? (
-            <span className="rounded-full bg-brand-600 px-2 py-0.5 text-xs font-semibold text-white" aria-label={`${item.badge} não lidas`}>
+            <span className="rounded-sm bg-brand-600 px-1.5 font-mono text-[11px] leading-5 text-white" aria-label={`${item.badge} não lidas`}>
               {item.badge}
             </span>
           ) : null}
@@ -93,13 +93,13 @@ export function Layout() {
   )
 
   const account = (
-    <div className="border-t border-slate-200 p-4">
-      <p className="truncate text-sm font-medium text-slate-900">{user?.name}</p>
+    <div className="border-t border-slate-200 p-3">
+      <p className="truncate text-[13px] font-medium text-slate-900">{user?.name}</p>
       <p className="truncate text-xs text-slate-500">{user?.email}</p>
       <LiveIndicator status={live} />
-      <div className="mt-2 flex items-center justify-between">
-        {user && <Badge tone="brand">{roleLabel[user.role]}</Badge>}
-        <button onClick={handleLogout} className="text-sm font-medium text-slate-600 hover:text-slate-900">
+      <div className="mt-2.5 flex items-center justify-between">
+        {user && <Badge>{roleLabel[user.role]}</Badge>}
+        <button onClick={handleLogout} className="text-[13px] font-medium text-slate-600 hover:text-slate-900">
           Sair
         </button>
       </div>
@@ -107,20 +107,20 @@ export function Layout() {
   )
 
   const brand = (
-    <div className="flex items-center gap-2.5 px-6 py-5">
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white">
-        <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5" aria-hidden="true">
-          <path d="M4.5 8.25A3.75 3.75 0 0 1 8.25 4.5h7.5a3.75 3.75 0 0 1 3.75 3.75v4.5a3.75 3.75 0 0 1-3.75 3.75h-3.4l-4.1 3v-3.04A3.75 3.75 0 0 1 4.5 12.75z" />
-        </svg>
-      </span>
-      <span className="text-lg font-semibold tracking-tight text-slate-900">HelpDeskFlow</span>
+    <div className="flex items-center gap-2 px-4 py-4">
+      {/* A marca: três barras que encurtam, como uma fila sendo atendida. */}
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+        <rect width="24" height="24" rx="5" className="fill-brand-600" />
+        <path d="M6 8h12M6 12h8.5M6 16h5" stroke="white" strokeWidth="2" strokeLinecap="square" fill="none" />
+      </svg>
+      <span className="text-[15px] font-semibold tracking-tight text-slate-900">HelpDeskFlow</span>
     </div>
   )
 
   return (
     <div className="flex h-full flex-col md:flex-row">
       {/* Menu lateral (telas grandes) */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white md:flex">
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-slate-200 bg-white md:flex">
         {brand}
         {nav}
         {account}
@@ -133,7 +133,7 @@ export function Layout() {
           onClick={() => setMenuOpen((o) => !o)}
           aria-expanded={menuOpen}
           aria-controls="mobile-menu"
-          className="mr-4 rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+          className="mr-3 rounded-md p-2 text-slate-600 hover:bg-slate-100"
         >
           <span className="sr-only">Abrir menu</span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6" aria-hidden="true">
@@ -149,7 +149,7 @@ export function Layout() {
       )}
 
       <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
           <Outlet />
         </div>
       </main>

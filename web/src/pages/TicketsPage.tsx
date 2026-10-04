@@ -2,10 +2,22 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, Card, EmptyState, ErrorBlock, Input, LoadingBlock, Modal, PageHeader, PriorityBadge, Select, StatusBadge, Textarea, useToast } from '../components/ui'
 import { useAuth } from '../lib/auth'
-import { errorMessage, priorityLabel, statusLabel, timeAgo } from '../lib/format'
+import { errorMessage, priorityLabel, statusLabel, ticketRef, timeAgo } from '../lib/format'
 import { useCreateTicket, useTickets } from '../lib/queries'
 import { filterTickets } from '../lib/tickets'
 import type { TicketPriority, TicketStatus } from '../lib/types'
+
+// Larguras fixas das colunas: o cabeçalho e as linhas usam as mesmas, então tudo alinha.
+// (Só a partir de "md": no celular as colunas não existem, cada informação ocupa o que precisa.)
+const col = {
+  priority: 'shrink-0 md:w-24',
+  ref: 'shrink-0 md:w-14',
+  person: 'shrink-0 md:w-32',
+  status: 'shrink-0 md:w-28',
+  time: 'shrink-0 md:w-14',
+}
+
+const person = `order-last truncate text-xs md:order-none md:text-[13px] ${col.person}`
 
 const statusTabs: { value: TicketStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'Todos' },
@@ -38,20 +50,20 @@ export function TicketsPage() {
       />
 
       <Card>
-        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
-          <div role="tablist" aria-label="Filtrar por status" className="flex flex-wrap gap-1">
+        <div className="flex flex-col gap-2 border-b border-slate-200 px-4 pt-1 lg:flex-row lg:items-center lg:justify-between lg:gap-4 lg:pt-0">
+          <div role="tablist" aria-label="Filtrar por status" className="-mb-px flex flex-wrap gap-x-5">
             {statusTabs.map((tab) => (
               <button
                 key={tab.value}
                 role="tab"
                 aria-selected={status === tab.value}
                 onClick={() => setStatus(tab.value)}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                  status === tab.value ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100'
+                className={`border-b-2 py-2.5 text-[13px] font-medium transition-colors ${
+                  status === tab.value ? 'border-brand-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
                 }`}
               >
                 {tab.label}
-                <span className="ml-1.5 text-xs text-slate-600">{counts(tab.value)}</span>
+                <span className="ml-1.5 font-mono text-xs text-slate-500">{counts(tab.value)}</span>
               </button>
             ))}
           </div>
@@ -61,7 +73,7 @@ export function TicketsPage() {
             placeholder={isStaff ? 'Buscar por título ou solicitante…' : 'Buscar por título…'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border-0 bg-white px-3 py-2 text-sm shadow-sm ring-1 ring-slate-300 placeholder:text-slate-500 focus:ring-2 focus:ring-brand-600 lg:w-72"
+            className="mb-2 w-full rounded-md border-0 bg-white px-2.5 py-1.5 text-[13px] ring-1 ring-inset ring-slate-300 placeholder:text-slate-500 focus:ring-2 focus:ring-brand-600 lg:mb-0 lg:w-72"
           />
         </div>
 
@@ -76,31 +88,48 @@ export function TicketsPage() {
             action={tickets.data.length === 0 ? <Button onClick={() => setCreating(true)}>Abrir o primeiro chamado</Button> : undefined}
           />
         ) : (
-          <ul className="divide-y divide-slate-100">
-            {visible.map((t) => (
-              <li key={t.id}>
-                <Link to={`/tickets/${t.id}`} className="flex flex-col gap-2 px-4 py-4 transition-colors hover:bg-slate-50 sm:flex-row sm:items-center sm:gap-4">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-slate-900">{t.title}</p>
-                    <p className="mt-0.5 truncate text-xs text-slate-500">
-                      {isStaff && t.requesterId !== user?.id ? `${t.requesterName ?? 'Usuário'} · ` : ''}
-                      aberto {timeAgo(t.createdAt)}
-                      {t.assigneeName ? ` · responsável: ${t.assigneeName}` : ' · sem responsável'}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {t.slaBreachedAt && (
-                      <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-200" title="O prazo de primeiro atendimento estourou">
-                        SLA estourado
-                      </span>
+          <>
+            {/* Cabeçalho das colunas (só para quem enxerga: a lista já se explica para leitores de tela). */}
+            <div aria-hidden="true" className="hidden items-center gap-3 border-b border-slate-100 px-4 py-1.5 text-[11px] font-medium uppercase tracking-wider text-slate-500 md:flex">
+              <span className={col.priority}>Prioridade</span>
+              <span className={col.ref}>Ref.</span>
+              <span className="min-w-0 flex-1">Título</span>
+              {isStaff && <span className={col.person}>Solicitante</span>}
+              <span className={col.person}>Responsável</span>
+              <span className={col.status}>Status</span>
+              <span className={`${col.time} text-right`}>Aberto</span>
+            </div>
+            <ul className="divide-y divide-slate-100">
+              {visible.map((t) => (
+                <li key={t.id}>
+                  <Link
+                    to={`/tickets/${t.id}`}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-[13px] transition-colors hover:bg-slate-50 md:flex-nowrap"
+                  >
+                    <PriorityBadge priority={t.priority} className={col.priority} />
+                    <span className={`${col.ref} font-mono text-xs text-slate-500`}>{ticketRef(t.id)}</span>
+                    <span className="order-last flex min-w-0 basis-full items-center gap-2 md:order-none md:basis-0 md:flex-1">
+                      <span className="truncate font-medium text-slate-900">{t.title}</span>
+                      {t.slaBreachedAt && (
+                        <span className="shrink-0 rounded-sm bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-700" title="O prazo de primeiro atendimento estourou">
+                          SLA estourado
+                        </span>
+                      )}
+                    </span>
+                    {/* Pessoas: colunas no desktop; no celular descem para uma linha abaixo do título (mesmo elemento). */}
+                    {isStaff && (
+                      <span className={`${person} text-slate-600`}>{t.requesterId === user?.id ? 'Você' : (t.requesterName ?? 'Usuário')}</span>
                     )}
-                    <PriorityBadge priority={t.priority} />
-                    <StatusBadge status={t.status} />
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
+                    <span className={`${person} ${t.assigneeName ? 'text-slate-600' : 'text-slate-500'}`}>{t.assigneeName ?? 'sem responsável'}</span>
+                    <span className={col.status}>
+                      <StatusBadge status={t.status} />
+                    </span>
+                    <span className={`${col.time} ml-auto text-right text-xs text-slate-500 md:ml-0`}>{timeAgo(t.createdAt)}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </Card>
 

@@ -63,8 +63,8 @@ await new Promise((r) => setTimeout(r, 2500))
 
 const novo = (title, description, priority) => post('/api/tickets', { title, description, priority }, customerToken)
 const t1 = await novo('Impressora do 2º andar não imprime', 'Aparece "offline" desde ontem. Já reiniciei o computador e a impressora.', 'High')
-const t2 = await novo('Não consigo acessar o e-mail corporativo', 'A senha foi aceita, mas a caixa de entrada não carrega.', 'Urgent')
-const t3 = await novo('Solicitar instalação do Visual Studio', 'Preciso do Visual Studio 2022 para o projeto novo.', 'Low')
+await novo('Não consigo acessar o e-mail corporativo', 'A senha foi aceita, mas a caixa de entrada não carrega.', 'Urgent')
+await novo('Solicitar instalação do Visual Studio', 'Preciso do Visual Studio 2022 para o projeto novo.', 'Low')
 const t4 = await novo('VPN cai a cada 10 minutos', 'Acontece só em casa, no escritório funciona normalmente.', 'Medium')
 const t5 = await novo('Monitor com a tela piscando', 'Começou depois da troca do cabo HDMI.', 'Low')
 

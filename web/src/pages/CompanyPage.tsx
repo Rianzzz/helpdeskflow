@@ -81,7 +81,7 @@ function UsageBar({ usage }: { usage: PlanUsage }) {
 function Item({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
+      <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">{label}</dt>
       <dd className="mt-1 text-sm text-slate-900">{value}</dd>
     </div>
   )

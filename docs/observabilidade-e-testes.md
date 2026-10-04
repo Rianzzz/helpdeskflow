@@ -29,7 +29,7 @@ adulterado/forjado, bloqueio de conta, reuso de refresh token, idempotência, DL
 **Front-end** (`web/`):
 
 ```
-npm test                  # Vitest + Testing Library (98 testes: cliente de API, tempo real, guardas, formulários, plano, conversa)
+npm test                  # Vitest + Testing Library (99 testes: cliente de API, tempo real, guardas, formulários, plano, conversa)
 npm run e2e               # Playwright: navegador de verdade contra a plataforma em contêineres (56 testes)
 ```
 

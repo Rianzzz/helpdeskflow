@@ -4,7 +4,7 @@ import { CommentThread } from '../components/CommentThread'
 import { Alert, Button, Card, ErrorBlock, LoadingBlock, PriorityBadge, Select, StatusBadge, useToast } from '../components/ui'
 import { ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { errorMessage, formatDateTime, timeAgo } from '../lib/format'
+import { errorMessage, formatDateTime, ticketRef, timeAgo } from '../lib/format'
 import { useStaff, useTicket, useTicketAction, type TicketAction } from '../lib/queries'
 import { availableActions } from '../lib/tickets'
 
@@ -55,10 +55,11 @@ export function TicketDetailPage() {
       </Link>
 
       <Card className="mb-6">
-        <div className="border-b border-slate-200 p-6">
+        <div className="border-b border-slate-200 p-5">
+          <p className="mb-1 font-mono text-xs text-slate-500">{ticketRef(t.id)}</p>
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <h1 className="min-w-0 flex-1 text-xl font-semibold text-slate-900">{t.title}</h1>
-            <div className="flex items-center gap-2">
+            <h1 className="min-w-0 flex-1 text-lg font-semibold text-slate-900">{t.title}</h1>
+            <div className="flex items-center gap-4">
               <PriorityBadge priority={t.priority} />
               <StatusBadge status={t.status} />
             </div>
@@ -70,13 +71,13 @@ export function TicketDetailPage() {
           )}
         </div>
 
-        <div className="p-6">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Descrição</h2>
+        <div className="p-5">
+          <h2 className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Descrição</h2>
           {/* O conteúdo vem de usuários: é exibido como TEXTO (React escapa), nunca como HTML. */}
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{t.description || 'Sem descrição.'}</p>
+          <p className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-slate-700">{t.description || 'Sem descrição.'}</p>
         </div>
 
-        <dl className="grid gap-4 border-t border-slate-200 p-6 text-sm sm:grid-cols-2">
+        <dl className="grid gap-4 border-t border-slate-200 p-5 text-[13px] sm:grid-cols-2">
           <Info label="Solicitante" value={t.requesterId === user?.id ? 'Você' : (t.requesterName ?? 'Usuário')} />
           <Info label="Responsável" value={t.assigneeName ?? 'Ninguém assumiu ainda'} />
           <Info label="Aberto" value={`${formatDateTime(t.createdAt)} (${timeAgo(t.createdAt)})`} />
@@ -87,8 +88,8 @@ export function TicketDetailPage() {
       {user && <CommentThread ticket={t} isStaff={isStaff} currentUserId={user.id} />}
 
       {(can.assign || can.resolve || can.close || can.reopen) && (
-        <Card className="p-6">
-          <h2 className="mb-4 text-sm font-semibold text-slate-900">Ações</h2>
+        <Card className="p-5">
+          <h2 className="mb-3 text-[13px] font-semibold text-slate-900">Ações</h2>
 
           {can.assign && (
             <div className="mb-5 flex flex-wrap items-end gap-3">
@@ -139,8 +140,8 @@ export function TicketDetailPage() {
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className="mt-1 text-slate-800">{value}</dd>
+      <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">{label}</dt>
+      <dd className="mt-0.5 text-slate-800">{value}</dd>
     </div>
   )
 }

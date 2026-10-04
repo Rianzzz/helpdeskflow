@@ -27,7 +27,7 @@ I built it to learn how a system like this is split, secured, tested and deploye
 
 All screens come from the running platform (`cd web && npm run screenshots` regenerates them).
 
-**Tickets.** Filters by status, search, and priority and status badges. Staff see every ticket of the company; a customer only sees their own.
+**Tickets.** A dense list: priority and status shown by icon plus text, a short reference per ticket, filters by status and search. Staff see every ticket of the company; a customer only sees their own.
 
 <img src="docs/images/tickets.png" alt="Ticket list with status filters and search" width="760">
 
@@ -119,9 +119,9 @@ cd web && npm install && npm run dev                                          # 
 
 | Suite | Count | Covers |
 |---|---|---|
-| .NET unit | 92 | domain rules and application services |
+| .NET unit | 97 | domain rules and application services |
 | .NET integration | 66 | the platform on real PostgreSQL and RabbitMQ (Testcontainers): the saga, tenant isolation, forged JWTs, refresh-token reuse, idempotency, dead-letter queue, SLA job |
-| Front-end (Vitest) | 98 | API client, real-time layer, route guards, forms |
+| Front-end (Vitest) | 99 | API client, real-time layer, route guards, forms |
 | Browser (Playwright) | 56 | full journeys with several people in isolated browsers, security, accessibility (axe, WCAG AA), mobile |
 | Cluster checks | 11 | privileged pod rejected, network paths blocked, no failed requests while pods are killed |
 

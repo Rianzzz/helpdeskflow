@@ -9,6 +9,10 @@ const GATEWAY = process.env.VITE_GATEWAY_URL ?? 'http://localhost:5000'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    // O CSP do nginx só aceita fontes da própria origem ("font-src 'self'"): nada de fonte embutida como data: URI.
+    assetsInlineLimit: 0,
+  },
   server: {
     port: 5173,
     proxy: {

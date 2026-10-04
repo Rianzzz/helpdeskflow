@@ -27,7 +27,7 @@ Fiz para aprender como um sistema assim é dividido, protegido, testado e implan
 
 Todas as telas vêm da plataforma rodando (`cd web && npm run screenshots` as gera de novo).
 
-**Chamados.** Filtros por status, busca e etiquetas de prioridade e status. A equipe vê todos os chamados da empresa; o cliente só vê os próprios.
+**Chamados.** Uma lista densa: prioridade e status por ícone e texto, uma referência curta por chamado, filtros por status e busca. A equipe vê todos os chamados da empresa; o cliente só vê os próprios.
 
 <img src="docs/images/tickets.png" alt="Lista de chamados com filtros de status e busca" width="760">
 
@@ -119,9 +119,9 @@ cd web && npm install && npm run dev                                          # 
 
 | Conjunto | Quantidade | O que cobre |
 |---|---|---|
-| .NET unitários | 92 | regras de domínio e serviços de aplicação |
+| .NET unitários | 97 | regras de domínio e serviços de aplicação |
 | .NET integração | 66 | a plataforma em PostgreSQL e RabbitMQ reais (Testcontainers): a saga, isolamento entre empresas, JWT forjado, reuso de refresh token, idempotência, fila de mensagens mortas, job de SLA |
-| Front-end (Vitest) | 98 | cliente de API, tempo real, guardas de rota, formulários |
+| Front-end (Vitest) | 99 | cliente de API, tempo real, guardas de rota, formulários |
 | Navegador (Playwright) | 56 | jornadas completas com várias pessoas em navegadores isolados, segurança, acessibilidade (axe, WCAG AA), celular |
 | Verificações do cluster | 11 | pod privilegiado recusado, caminhos de rede bloqueados, nenhuma requisição falha enquanto pods são mortos |
 

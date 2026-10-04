@@ -1,24 +1,31 @@
 import { describe, expect, it } from 'vitest'
 import { makeTicket } from '../test/helpers'
-import { errorMessage, timeAgo } from './format'
+import { errorMessage, ticketRef, timeAgo } from './format'
 import { availableActions, filterTickets } from './tickets'
 import { passwordProblem } from './validation'
 
 const now = new Date('2026-10-03T12:00:00Z')
 
 describe('timeAgo', () => {
-  it('diz "agora há pouco" para menos de um minuto', () => {
-    expect(timeAgo('2026-10-03T11:59:30Z', now)).toBe('agora há pouco')
+  it('diz "agora" para menos de um minuto', () => {
+    expect(timeAgo('2026-10-03T11:59:30Z', now)).toBe('agora')
   })
 
-  it('usa minutos, horas e dias em português', () => {
-    expect(timeAgo('2026-10-03T11:55:00Z', now)).toBe('há 5 minutos')
-    expect(timeAgo('2026-10-03T09:00:00Z', now)).toBe('há 3 horas')
+  it('usa o formato curto em português: minutos, horas e dias', () => {
+    expect(timeAgo('2026-10-03T11:55:00Z', now)).toBe('há 5 min.')
+    expect(timeAgo('2026-10-03T09:00:00Z', now)).toBe('há 3 h')
     expect(timeAgo('2026-10-02T12:00:00Z', now)).toBe('ontem')
   })
 
   it('para datas antigas mostra a data completa', () => {
     expect(timeAgo('2026-08-01T12:00:00Z', now)).toMatch(/\d{2}\/\d{2}\/\d{4}/)
+  })
+})
+
+describe('ticketRef', () => {
+  it('gera uma referência curta e estável a partir do id', () => {
+    expect(ticketRef('3f9a1c2e-0000-4000-8000-000000000000')).toBe('HD-3F9A')
+    expect(ticketRef('3f9a1c2e-0000-4000-8000-000000000000')).toBe(ticketRef('3f9a1c2e-0000-4000-8000-000000000000'))
   })
 })
 

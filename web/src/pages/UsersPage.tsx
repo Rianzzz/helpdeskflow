@@ -8,7 +8,7 @@ import { useCreateUser, useTenantProfile, useUsers } from '../lib/queries'
 import type { Role } from '../lib/types'
 import { passwordProblem } from '../lib/validation'
 
-const roleTone = { Admin: 'brand', Agent: 'sky', Customer: 'slate' } as const
+const roleTone = { Admin: 'brand', Agent: 'slate', Customer: 'slate' } as const
 
 export function UsersPage() {
   const { user: me } = useAuth()
@@ -49,8 +49,8 @@ export function UsersPage() {
         ) : (
           <ul className="divide-y divide-slate-100">
             {users.data.map((u) => (
-              <li key={u.id} className="flex items-center gap-4 px-5 py-4">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700" aria-hidden="true">
+              <li key={u.id} className="flex items-center gap-3 px-4 py-2.5">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700" aria-hidden="true">
                   {u.name.charAt(0).toUpperCase()}
                 </span>
                 <div className="min-w-0 flex-1">
@@ -108,7 +108,7 @@ function NewUserModal({ open, onClose }: { open: boolean; onClose: () => void })
     <Modal open={open} onClose={onClose} title="Novo usuário">
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         {error && (
-          <p role="alert" className="rounded-lg bg-red-50 px-3.5 py-3 text-sm text-red-800 ring-1 ring-inset ring-red-200">
+          <p role="alert" className="rounded-md bg-red-50 px-3 py-2.5 text-[13px] text-red-800 ring-1 ring-inset ring-red-200">
             {error}
           </p>
         )}

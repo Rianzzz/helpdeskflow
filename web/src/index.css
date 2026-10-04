@@ -1,12 +1,36 @@
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
 @import 'tailwindcss';
 
+/*
+  Sistema visual: ferramenta de trabalho, não vitrine. Texto pequeno e denso, bordas finas no lugar de sombras,
+  estado por ícone (e não por pílula colorida) e UMA cor de destaque, o cobalto.
+  IBM Plex Sans na interface e Plex Mono nos dados (referência do chamado, contagens).
+*/
 @theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --color-brand-50: #eef2ff;
-  --color-brand-100: #e0e7ff;
-  --color-brand-500: #6366f1;
-  --color-brand-600: #4f46e5;
-  --color-brand-700: #4338ca;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  /* Cobalto: o mesmo do portfólio. 600 é a cor de ação (contraste 7:1 com branco). */
+  --color-brand-50: #eef0ff;
+  --color-brand-100: #dde1ff;
+  --color-brand-500: #4552f5;
+  --color-brand-600: #2833d9;
+  --color-brand-700: #1f28b0;
+
+  /* Neutros frios com leve inclinação para o cobalto (no lugar do slate padrão do Tailwind). */
+  --color-slate-50: #f5f6f8;
+  --color-slate-100: #eceef2;
+  --color-slate-200: #dfe2e8;
+  --color-slate-300: #c6cad4;
+  --color-slate-400: #8d94a3;
+  --color-slate-500: #5b6270;
+  --color-slate-600: #464c59;
+  --color-slate-700: #333945;
+  --color-slate-800: #21252e;
+  --color-slate-900: #13161c;
 }
 
 html,
@@ -16,7 +40,7 @@ body,
 }
 
 body {
-  @apply bg-slate-50 font-sans text-slate-800 antialiased;
+  @apply bg-slate-50 font-sans text-sm text-slate-800 antialiased;
 }
 
 /* Foco visível para quem navega pelo teclado */
