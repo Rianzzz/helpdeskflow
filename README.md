@@ -1,321 +1,167 @@
+<div align="center">
+
 # HelpDeskFlow
 
-SaaS multi-tenant de help desk (chamados de suporte), construído em microsserviços com .NET 9.
+**A multi-tenant help desk SaaS built as .NET 9 microservices, with a React front-end, event-driven communication, real-time updates and a Kubernetes deployment.**
 
-## Como rodar
+[![CI](https://github.com/Rianzzz/helpdeskflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Rianzzz/helpdeskflow/actions/workflows/ci.yml)
+![.NET](https://img.shields.io/badge/.NET-9-512BD4?logo=dotnet&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
+![RabbitMQ](https://img.shields.io/badge/RabbitMQ-4-FF6600?logo=rabbitmq&logoColor=white)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-ready-326CE5?logo=kubernetes&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-### Opção A: tudo em contêineres (mais simples)
+**English** · [Português](README.pt-BR.md)
 
+<img src="docs/images/ticket-conversation.png" alt="Ticket conversation with a staff-only internal note" width="850">
+
+</div>
+
+## What it is
+
+Companies sign up, invite their team and customers, and handle support tickets. Each company is an isolated **tenant**:
+its data, users and plan limits are invisible to every other company. Customers open tickets, agents answer them,
+and everyone is notified **live** when something changes. Internal notes are visible to staff only.
+
+It was built to practice production-grade backend engineering end to end: not just endpoints, but how a system like this is
+**split, secured, tested, observed and deployed**.
+
+## Highlights
+
+| | |
+|---|---|
+| **Microservices** | Identity, Tickets, Tenants and Notifications behind a YARP API gateway; one database per service; services talk through events, never through each other's tables. |
+| **Reliable messaging** | RabbitMQ with a **transactional Outbox** (no lost or phantom events), idempotent consumers, retries and a dead-letter queue. |
+| **Distributed workflow** | A choreographed **onboarding saga** (Identity → Tenants → Identity) with compensation and a timeout. |
+| **Multi-tenancy** | Tenant isolation enforced at the database layer (EF Core global query filters); the tenant always comes from the token, never from the request body. |
+| **Security** | JWT with rotating refresh tokens and reuse detection, account lockout, rate limiting, strict CSP, defense in depth. See [docs/seguranca.md](docs/seguranca.md). |
+| **Real time** | SignalR pushes notifications to the browser; polling is the automatic fallback. The token in the URL is redacted from every log. |
+| **Kubernetes** | Kustomize manifests, Pod Security `restricted`, default-deny NetworkPolicies, init-container migrations, zero-downtime rollouts. Verified by automated tests, including killing pods under load. |
+| **Observability** | Structured logs (Serilog), distributed traces that stay connected across the Outbox (OpenTelemetry + Jaeger), health checks. |
+| **Quality** | Unit, integration (real PostgreSQL and RabbitMQ via Testcontainers), component and browser tests, accessibility checks (WCAG AA), all in CI. |
+
+<div align="center">
+<table>
+<tr>
+<td><img src="docs/images/tickets.png" alt="Ticket list with filters" width="520"></td>
+<td><img src="docs/images/mobile-tickets.png" alt="Responsive mobile layout" width="170"></td>
+</tr>
+<tr>
+<td><img src="docs/images/users.png" alt="Users and plan limit" width="520"></td>
+<td></td>
+</tr>
+</table>
+</div>
+
+## Architecture
+
+```mermaid
+flowchart LR
+    B["Browser<br/>React SPA"] -->|"HTTPS · WebSocket"| W["nginx<br/>static files · CSP"]
+    W -->|"/api · /hubs"| G["API Gateway<br/>YARP · JWT · rate limit"]
+
+    G --> ID["Identity<br/>auth · users · tenants"]
+    G --> TK["Tickets<br/>tickets · comments · SLA"]
+    G --> TN["Tenants<br/>profile · plan"]
+    G --> NT["Notifications<br/>inbox · SignalR hub"]
+
+    ID --- DB1[("PostgreSQL<br/>one database<br/>per service")]
+    TK --- DB1
+    TN --- DB1
+    NT --- DB1
+
+    ID -. "events<br/>(Outbox)" .-> MQ{{"RabbitMQ"}}
+    TK -. events .-> MQ
+    TN -. events .-> MQ
+    MQ -. events .-> NT
+    MQ -. events .-> TK
+    MQ -. events .-> ID
 ```
-cp .env.example .env        # defina JWT_SIGNING_KEY (obrigatória) e, se quiser, as senhas
+
+Services are layered `Api → Infrastructure → Application → Domain`, and the domain depends on nothing. More in
+[docs/arquitetura.md](docs/arquitetura.md) (Portuguese).
+
+## Tech stack
+
+| Area | Technologies |
+|---|---|
+| Backend | C# · .NET 9 · ASP.NET Core Minimal APIs · EF Core 9 · Npgsql · YARP · SignalR · RabbitMQ.Client |
+| Front-end | React 19 · TypeScript · Vite · Tailwind CSS 4 · React Router · TanStack Query |
+| Data and messaging | PostgreSQL 17 · RabbitMQ 4 |
+| Observability | Serilog · OpenTelemetry · Jaeger · health checks |
+| Testing | xUnit · Testcontainers · Vitest · Testing Library · Playwright · axe-core |
+| Delivery | Docker (multi-stage, non-root) · Docker Compose · Kubernetes (Kustomize, kind) · GitHub Actions |
+
+## Quick start
+
+You need Docker. The whole platform comes up with two commands:
+
+```bash
+cp .env.example .env          # set JWT_SIGNING_KEY (any random string with 32+ bytes)
 docker compose --profile apps up -d --build
 ```
 
-O **front-end** fica em **http://localhost:3000** (nginx, que repassa `/api` ao gateway) e a API em **http://localhost:5000** (gateway). Os demais serviços ficam numa rede Docker privada e **não** são expostos ao host.
-As migrations rodam sozinhas na primeira subida (`Database__MigrateOnStartup`). Para acompanhar os traces:
-`docker compose --profile observability up -d jaeger` e defina `OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317` no `.env`.
+Open **http://localhost:3000**, click *Criar empresa* (create company), and the onboarding saga activates it in a couple of seconds.
+The API is at `http://localhost:5000` (gateway); the other services stay on a private Docker network.
 
-Imagens: um único `docker/Dockerfile` multi-stage (compila uma vez, uma imagem enxuta por serviço, processo **sem root**,
-healthcheck em `/health/live`).
-
-### Opção B: serviços no `dotnet run` (para desenvolver e depurar)
-
-1. Abra o **Docker Desktop** e suba só a infraestrutura (PostgreSQL com um banco por serviço, RabbitMQ):
-   ```
-   docker compose up -d
-   ```
-   Se o volume do Postgres já existia antes de uma fase, crie os bancos que faltarem uma vez:
-   `docker exec helpdesk-postgres createdb -U helpdesk helpdesk_tenants` (e `helpdesk_tickets`, `helpdesk_identity`,
-   `helpdesk_notifications`). Painel do RabbitMQ: http://localhost:15672 (usuário `helpdesk`, senha `helpdesk_dev`, só dev).
-2. Rode os serviços (cada um em um terminal; as migrations são aplicadas sozinhas em Development):
-   ```
-   dotnet run --project src/Services/Identity/Identity.Api           --urls http://localhost:5081
-   dotnet run --project src/Services/Tickets/Tickets.Api             --urls http://localhost:5080
-   dotnet run --project src/Services/Notifications/Notifications.Api --urls http://localhost:5082
-   dotnet run --project src/Services/Tenants/Tenants.Api             --urls http://localhost:5083
-   dotnet run --project src/Gateway/Gateway.Api                      --urls http://localhost:5000
-   ```
-   > Na primeira vez, suba Tickets e Notifications **antes** de gerar eventos: cada serviço cria suas filas ao iniciar.
-
-### Front-end em desenvolvimento
-
-Com a plataforma no ar (Opção A ou B), em outro terminal:
-
-```
-cd web
-npm install
-npm run dev          # http://localhost:5173 (o Vite repassa /api para o gateway em localhost:5000)
-npm test             # testes (Vitest + Testing Library)
-npm run lint && npm run build
-```
-
-### Usando a API
-
-Use **sempre o gateway** (`http://localhost:5000`). Teste com os arquivos `*.http` (VS Code com REST Client, ou Visual Studio).
-Fluxo: registrar empresa → acompanhar o status até `Active` → login → usar o `accessToken` nos chamados.
-
-> A chave JWT de `appsettings.Development.json` é só para desenvolvimento. Em produção ela vem de `Jwt__SigningKey`
-> (variável de ambiente / cofre de segredos); o serviço recusa subir sem uma chave de pelo menos 32 bytes.
-
-## Estrutura
-
-```
-web/                                   front-end React + TypeScript (Vite, Tailwind, TanStack Query)
-src/Gateway/Gateway.Api                API Gateway (YARP): entrada única, segurança de borda
-src/BuildingBlocks/HelpDeskFlow.Auth   contrato compartilhado: papéis, claims, validação de JWT
-src/BuildingBlocks/HelpDeskFlow.Contracts            eventos de integração + interfaces (sem dependências)
-src/BuildingBlocks/HelpDeskFlow.Messaging.RabbitMq   publicador/consumidor sobre RabbitMQ.Client
-src/BuildingBlocks/HelpDeskFlow.Messaging.Outbox     Outbox transacional (publicação confiável de eventos)
-src/BuildingBlocks/HelpDeskFlow.Observability        logs (Serilog), traces/métricas (OpenTelemetry), correlation id, health checks
-tests/HelpDeskFlow.UnitTests                         testes unitários (domínio, serviços de aplicação com fakes)
-tests/HelpDeskFlow.IntegrationTests                  testes com PostgreSQL e RabbitMQ reais (Testcontainers)
-src/Services/Notifications/            consome eventos e gera notificações (serviço simples: um projeto só)
-src/Services/Tenants/                  perfil/plano da empresa e passo central da saga de onboarding
-src/Services/Identity/                 cadastro de empresas, login, JWT, refresh tokens, usuários
-src/Services/Tickets/                  chamados (isolados por empresa e por usuário)
-  <Serviço>.Domain          regras de negócio puras
-  <Serviço>.Application     casos de uso + interfaces
-  <Serviço>.Infrastructure  EF Core + PostgreSQL, repositórios, migrations
-  <Serviço>.Api             endpoints HTTP (Minimal API)
-```
-
-Regra de dependência: `Api → Infrastructure → Application → Domain`. O Domain não depende de nada.
-
-## Segurança implementada
-
-- Senhas com PBKDF2 + salt (nunca em texto puro); política de senha (10+ caracteres, letras e números)
-- JWT de 15 min com `tenant_id` e `role`; só aceita HS256 (bloqueia `alg: none`); chave validada na inicialização
-- Refresh token aleatório, **guardado só como hash**, com **rotação** e **detecção de reuso** (reuso derruba todas as sessões)
-- Bloqueio de conta após 5 senhas erradas (15 min); mesma resposta para "usuário inexistente" e "senha errada"
-  (e tempo equalizado) para não permitir enumeração de contas
-- Rate limiting por IP nas rotas de autenticação
-- Isolamento multi-tenant no banco (Global Query Filter) + clientes só veem os próprios chamados
-- Autorização por papéis (Admin, Agent, Customer); tenant sempre vindo do token, nunca do corpo da requisição
-- Erros inesperados nunca vazam detalhes internos
-
-### Comunicação entre serviços (eventos com RabbitMQ)
-
-```
-Identity ──UserRegistered──────────────► Tickets (cópia local de usuários → valida o responsável)
-    └──────────────────────────────────► Notifications (cópia local: quem e qual e-mail notificar)
-Tickets ──TicketCreated/Assigned/Resolved──► Notifications (grava a notificação do usuário certo)
-```
-
-- Um exchange `topic` (`helpdeskflow.events`); cada serviço tem **a sua fila por evento** (`<serviço>.<evento>`)
-- **Publisher confirms** (só considera publicado quando o broker confirmou), mensagens persistentes
-- **Ack manual** depois de processar, 3 tentativas com espera crescente e então **DLQ** (`*.dlq`) para análise
-- **Idempotência**: entregas duplicadas não geram notificações em dobro (tabela de eventos já processados)
-- O Tickets não chama o Identity a cada requisição: valida o responsável por uma **cópia local** mantida por eventos
-  (consistência eventual: se um usuário acabou de ser criado, pode levar instantes para ser reconhecido)
-- Os serviços sobrevivem a falhas: com o Notifications fora, os eventos aguardam na fila; com o RabbitMQ fora, as
-  requisições continuam funcionando e os consumidores reconectam sozinhos
-- **Outbox transacional** (Identity, Tickets e Tenants): o evento é gravado na tabela `outbox_messages` **na mesma transação**
-  do dado; um dispatcher em segundo plano o publica (ordem preservada, `FOR UPDATE SKIP LOCKED`, "pelo menos uma vez").
-  Com o broker fora do ar nada se perde: os eventos ficam no banco e saem quando o RabbitMQ volta
-- **Ids de evento determinísticos** (ex.: `TicketSlaBreached`, eventos da saga): o mesmo fato gera sempre o mesmo `EventId`,
-  então duplicatas, mesmo vindas de instâncias diferentes, são tratadas como um evento só
-
-> MassTransit foi evitado de propósito: a v9 passou a ser comercial. Usamos `RabbitMQ.Client` direto,
-> o que também ajuda a entender o que acontece por baixo.
-
-### Conversa nos chamados (comentários e notas internas)
-
-Cada chamado tem uma conversa: **respostas públicas** (visíveis a quem abriu o chamado) e **notas internas** (só a equipe vê). O
-cliente e o atendente conversam e cada mensagem aparece **na hora** na tela do outro (o aviso em tempo real recarrega a conversa).
-
-- **Notas internas nunca vazam**, em quatro camadas: o cliente não consegue criar (403); a API só devolve a ele comentários
-  públicos; o *filtro global* do EF Core reforça isso no banco (defesa em profundidade); e o aviso de nota interna só vai para a
-  equipe (o handler tem uma salvaguarda explícita, e há teste que prova que o cliente não recebe nem o aviso)
-- O evento `TicketCommented` **não carrega o texto** do comentário: o conteúdo fica só no Tickets e é lido pela API com a
-  autorização de quem pede. O aviso diz apenas que houve resposta
-- Quem é avisado: resposta pública da equipe → quem abriu o chamado (e o responsável, se for outra pessoa); cliente escreveu →
-  o responsável (ou toda a equipe, se ainda não há); nota interna → só equipe. O autor nunca é avisado do próprio comentário
-- Chamado **fechado** não aceita comentários até ser reaberto; limite de 4000 caracteres; texto sempre exibido como TEXTO
-  (nada de HTML), quebras de linha preservadas, Ctrl+Enter envia
-- Limite conhecido: autor/equipe recém-criados podem demorar instantes para ser reconhecidos (replicação por evento); a tela mostra
-  "Usuário" até lá e o aviso, nesse intervalo, só alcança quem o Notifications já conhece
-
-### Limites do plano (SaaS de verdade)
-
-Cada empresa tem um plano com limites; hoje o **Free** comporta **5 usuários** (o administrador conta como um). Quem DEFINE o
-plano é o serviço Tenants; quem APLICA é o Identity, que é quem cadastra pessoas:
-
-```
-Tenants decide o plano ──TenantProvisioned{ plano, maxUsers }──► Identity guarda o limite e passa a reservar uma vaga a cada usuário
-```
-
-- O limite viaja **no evento** (sem o Identity consultar o Tenants a cada cadastro: se o Tenants cair, os cadastros continuam)
-- **À prova de corrida**: o contador de vagas da empresa é *token de concorrência* e é salvo na mesma transação do usuário.
-  Seis cadastros simultâneos disputando a última vaga deixam passar **exatamente um**; os outros recebem `409` (teste de integração
-  contra PostgreSQL real). Violação do limite responde `409` com mensagem para o administrador, nunca `500`
-- A interface mostra o uso ("4 de 5 usuários"), bloqueia "Novo usuário" quando o plano lota e explica o motivo, e a tela de
-  Empresa tem uma barra de uso (acessível: `role="progressbar"`). Esconder o botão não é a proteção: o servidor recusa de qualquer forma
-- A migration preserva os dados existentes: empresas ativas recebem o limite do Free e o contador reflete os usuários reais
-- Próximo passo natural: eventos de mudança de plano (`TenantPlanChanged`) e cobrança; o desenho já comporta, porque o limite é um dado
-  que o Identity recebe, não uma regra fixa no código
-
-### Notificações em tempo real (SignalR)
-
-O Notifications hospeda um hub (`/hubs/notifications`): assim que uma notificação é gravada, o servidor a **empurra** para o
-navegador de quem a recebe (WebSocket, com fallback automático para SSE/long polling). O navegador chega ao hub por
-nginx → gateway (YARP, com cluster próprio e prazo de inatividade maior) → Notifications.
-
-```
-evento (RabbitMQ) → handler grava a notificação → empurra ao grupo "user:{tenant}:{usuário}" → contador, lista e aviso na tela
-```
-
-- **Acelerador, não fonte da verdade**: a lista continua vindo da API REST. Ao (re)conectar, as listas são recarregadas; sem
-  conexão, a tela volta a consultar a API a cada 15 s (o indicador do menu mostra "Ao vivo" ou o modo de reserva). Falha ao
-  empurrar nunca derruba o tratamento do evento (o dado já está gravado)
-- **Autenticação**: WebSocket de navegador não envia `Authorization`, então o JWT vai em `?access_token=`. Por isso: só é
-  aceito nas rotas `/hubs` (em qualquer outra é ignorado); é **redigido** nos logs do nginx (`[REDACTED]`, em todas as rotas),
-  nos traces do OpenTelemetry e nunca aparece nos logs do gateway e dos serviços; e o servidor **encerra a conexão quando o
-  token expira** (`CloseOnAuthenticationExpiration`), com o cliente reconectando já com um token novo
-- **Autorização**: o grupo de cada conexão é montado só com as claims do token (ninguém entra no grupo de outra pessoa) e o hub
-  não expõe nenhum método chamável pelo cliente; também empurra "lida em outra aba" para o contador acompanhar
-- **Limite conhecido**: com várias instâncias do Notifications, falta um *backplane* (ex.: Redis), porque o evento é consumido
-  por uma instância que pode não ser a que tem a conexão do usuário
-- Corrigido junto: se o primeiro chamado fosse aberto logo após o cadastro, o aviso podia se perder (o `TicketCreated`
-  chegava antes de o Notifications conhecer o admin). Agora o handler tenta de novo em vez de descartar
-
-### SLA (job agendado)
-
-Um job em segundo plano (`SlaMonitor`) verifica, a cada minuto, chamados **abertos e sem responsável** além do prazo da
-prioridade (padrão: Urgent 15 min, High 1 h, Medium 4 h, Low 24 h; configurável na seção `Sla`). Ao estourar, marca o chamado
-(`slaBreachedAt`) e publica `TicketSlaBreached`; o Notifications escala o alerta para os **administradores** da empresa.
-O job varre todas as empresas por métodos de repositório explicitamente "do sistema" (que ignoram o filtro de tenant)
-e nenhum endpoint HTTP os usa.
-
-### Saga de onboarding de empresa (coreografada, com compensação)
-
-```
-1. Identity  : cria a empresa "Provisioning" + admin ──TenantRegistered──►
-2. Tenants   : valida o nome (único, não reservado) e cria perfil/plano
-                 ├─ ok ───TenantProvisioned────────► 3a. Identity ativa a empresa ──UserRegistered/TenantActivated──► Tickets, Notifications (boas-vindas)
-                 └─ não ──TenantProvisioningFailed─► 3b. Identity COMPENSA: empresa "Failed" + remove o admin (libera o e-mail); Notifications explica o motivo
-Timeout: se nada acontecer em 10 min, o Identity desiste, compensa e avisa o Tenants (TenantRegistrationExpired) para desfazer perfil tardio.
-```
-
-- `POST /api/auth/register-tenant` responde **202** (recebido, em provisionamento); acompanhe em
-  `GET /api/auth/tenants/{id}/status` (`Provisioning` → `Active` | `Failed` + motivo) e faça login quando `Active`
-- Ninguém da empresa consegue entrar enquanto ela não está `Active`; **a senha nunca viaja em eventos**
-- O Tenants guarda o **estado da saga** (`onboarding_states`): garante idempotência e que um aviso de expiração que chegue
-  antes do cadastro impeça perfis órfãos
-- Conflito entre ativar e expirar ao mesmo tempo é resolvido por concorrência otimista (o status é token de concorrência)
-
-### Observabilidade
-
-- **Logs estruturados** (Serilog): legíveis no console em desenvolvimento, **JSON** em produção. Toda linha leva o nome do
-  serviço, `TraceId` e `CorrelationId`; consumidores acrescentam `EventId` e a fila. Uma linha por requisição HTTP
-- **Correlation ID**: o gateway cria (ou aceita só se for um GUID válido, contra "forjar" logs) o `X-Correlation-Id`,
-  que viaja para os serviços, volta na resposta e aparece em todos os logs da requisição
-- **Traces distribuídos** (OpenTelemetry): uma requisição vira uma árvore de spans por gateway → serviços → PostgreSQL →
-  RabbitMQ → outros serviços. O Outbox guarda o `traceparent`, então **o trace continua ligado mesmo com o envio assíncrono**
-  (uma saga inteira aparece como UM trace). Ative com `OTEL_EXPORTER_OTLP_ENDPOINT`; para visualizar:
-  ```
-  docker compose --profile observability up -d jaeger     # http://localhost:16686
-  ```
-  e rode os serviços com `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317`
-- **Métricas** (requisições, runtime .NET) exportadas pelo mesmo canal OTLP
-- **Health checks** públicos e sem detalhes sensíveis: `/health/live` (processo de pé) e `/health/ready` (PostgreSQL e RabbitMQ)
-
-### Testes
-
-```
-dotnet test tests/HelpDeskFlow.UnitTests          # rápido, sem dependências
-dotnet test tests/HelpDeskFlow.IntegrationTests   # precisa do Docker: sobe PostgreSQL e RabbitMQ e os 4 serviços
-```
-
-Os testes de integração exercitam a plataforma de verdade (saga de onboarding, isolamento entre empresas e papéis, JWT
-adulterado/forjado, bloqueio de conta, reuso de refresh token, idempotência, DLQ, job de SLA).
-
-**Front-end** (`web/`):
-
-```
-npm test                  # Vitest + Testing Library (98 testes: cliente de API, tempo real, guardas, formulários, plano, conversa)
-npm run e2e               # Playwright: navegador de verdade contra a plataforma em contêineres (56 testes)
-```
-
-Os testes de navegador (Playwright) abrem o app em `http://localhost:3000` e cobrem: cadastro com acompanhamento da saga
-(sucesso, nome duplicado/reservado, senha fraca), login e sessão (redirecionamento de volta, recarregar, sair, refresh token
-adulterado, **uma única renovação** quando várias requisições expiram juntas), o ciclo de um chamado entre **três pessoas em
-navegadores isolados** (cliente abre → atendente assume e resolve → cliente é avisado e reabre), isolamento entre empresas e
-entre clientes, segurança (CSP bloqueando script injetado, HTML de usuário exibido como texto, tokens fora do `localStorage`,
-servidor recusando ação proibida), **acessibilidade** (axe, WCAG AA) e celular. Antes, suba a plataforma com o limite de
-login alto, porque os testes fazem muitos logins por minuto do mesmo IP:
-
-```
-AUTH_RATE_LIMIT_PER_MINUTE=1000 docker compose --profile apps up -d --build      # PowerShell: $env:AUTH_RATE_LIMIT_PER_MINUTE=1000
-cd web && npx playwright install chromium && npm run e2e
-```
-
-Cada teste cria a própria empresa (nomes aleatórios), então podem rodar em paralelo e repetidas vezes sem limpar nada.
-
-### Front-end (`web/`)
-
-React 19 + TypeScript + Vite, Tailwind CSS, React Router e TanStack Query. Telas: cadastro de empresa (com o acompanhamento
-da **saga** em tempo quase real), login, chamados (filtros, busca, criação, detalhe com ações por papel), notificações
-(com contador no menu, **ao vivo** via SignalR), usuários (Admin) e dados da empresa. Responsivo e acessível (rótulos, foco,
-`<dialog>`, `aria-live`).
-
-- **Mesma origem**: o navegador só fala com `/api` e `/hubs` (Vite em dev, nginx em produção): sem CORS e sem URL de API no código
-- **Tokens**: o access token (15 min) fica **só em memória**; o refresh token no `sessionStorage` (por aba). A renovação é
-  *single-flight*: várias requisições com 401 compartilham UMA renovação, senão a detecção de reuso do servidor derrubaria a sessão.
-  Próximo passo de endurecimento: cookie `httpOnly` via BFF
-- **XSS**: o React escapa todo conteúdo (a descrição dos chamados é exibida como texto, nunca como HTML) e o nginx aplica uma
-  **CSP restritiva** (`script-src 'self'`), além de `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy` e `Permissions-Policy`
-- **Papéis na tela são só conveniência**: botões escondidos não protegem nada; o servidor valida o papel do token em cada chamada
-- Imagem Docker de ~80 MB (build em Node, servida por nginx **sem root**)
-
-### CI/CD (GitHub Actions)
-
-`.github/workflows/ci.yml` roda a cada push e pull request, com permissão mínima (`contents: read`):
-
-0. **Front-end**: `npm ci`, lint, testes, build de produção (com checagem de tipos), tipos dos testes de navegador e `npm audit`
-1. **Build e testes**: compila em Release, roda os testes unitários e os de integração (Testcontainers; o runner já tem Docker)
-2. **Pacotes vulneráveis**: `dotnet list package --vulnerable --include-transitive` e falha se achar algum
-3. **Imagens Docker + fumaça + testes de navegador**: constrói as 6 imagens (5 serviços e o front), sobe a plataforma completa com
-   `docker compose --profile apps` (segredos efêmeros gerados na hora), roda `scripts/smoke-test.sh` pelo gateway (saga de onboarding,
-   login, chamado, notificação) e depois os **testes de navegador do Playwright**; se algo falhar, guarda o relatório com screenshots e traces
-
-4. **Kubernetes (kind)**: sobe a plataforma num cluster real (Pod Security `restricted`), roda o teste de fumaça, `scripts/k8s-verify.sh`
-   (pod privilegiado recusado, NetworkPolicy bloqueando o que não é da arquitetura, matar pods sem derrubar a plataforma) e os testes
-   de navegador, e valida o overlay de produção com `kubectl apply --dry-run=server`
-
-O mesmo teste de fumaça serve localmente: `./scripts/smoke-test.sh http://localhost:5000 http://localhost:3000` (o segundo argumento, opcional, valida também o nginx: SPA, proxy da API e cabeçalhos).
-
-### Kubernetes
+<details>
+<summary><b>Run on Kubernetes (kind)</b></summary>
 
 ```bash
-./scripts/k8s-kind.sh up      # cluster local (kind) com tudo no ar: front http://localhost:8088, API http://localhost:8089
-./scripts/k8s-verify.sh       # garantias do cluster: Pod Security, NetworkPolicy, resiliência
+./scripts/k8s-kind.sh up        # creates the cluster, builds and loads the images, generates random secrets, deploys
+./scripts/smoke-test.sh http://localhost:8089 http://localhost:8088
+./scripts/k8s-verify.sh         # Pod Security, NetworkPolicy and pod-kill resilience checks
 ./scripts/k8s-kind.sh down
 ```
 
-Manifestos com Kustomize (`k8s/base` + overlays), pods endurecidos (não-root, sistema de arquivos somente leitura, sem capabilities),
-NetworkPolicy "nega tudo, libera só o necessário", migrações em `initContainer`, probes, atualização sem queda e um exemplo de produção
-(Ingress com TLS, HPA, PodDisruptionBudget). As decisões e os porquês estão em [`k8s/README.md`](k8s/README.md).
+Front-end on `http://localhost:8088`, API on `http://localhost:8089`. The decisions behind the manifests are in [k8s/README.md](k8s/README.md).
+</details>
 
-### Gateway (borda)
+<details>
+<summary><b>Develop with <code>dotnet run</code> and Vite</b></summary>
 
-- Entrada única: os clientes só falam com o gateway; as rotas ficam em `Gateway.Api/appsettings.json`
-- JWT validado já no gateway (e de novo nos serviços: defesa em profundidade); **toda rota exige login por padrão**,
-  só as de `/api/auth` são marcadas como anônimas
-- **Rate limiting por empresa** (tenant) nas rotas autenticadas e por IP no login/cadastro, com `Retry-After`
-- CORS só para origens listadas; cabeçalhos de segurança (CSP, nosniff, X-Frame-Options, no-store);
-  sem `Server: Kestrel`; corpo máximo de 1 MB; timeout de 30 s para os serviços
-- `X-Correlation-Id` gerado/propagado em cada requisição (base para os logs distribuídos da Fase 6)
-- Os serviços aceitam `X-Forwarded-For` só de proxies confiáveis, para o rate limit enxergar o IP real do cliente
+```bash
+docker compose up -d            # only PostgreSQL and RabbitMQ
+dotnet run --project src/Gateway/Gateway.Api --urls http://localhost:5000   # and each service, see docs/executando.md
+cd web && npm install && npm run dev                                          # http://localhost:5173
+```
+</details>
 
-> Em produção os serviços internos não devem ser expostos à internet: só o gateway (rede Docker/Kubernetes privada).
+## Tests
+
+| Suite | Count | What it covers |
+|---|---|---|
+| .NET unit | 92 | domain rules and application services |
+| .NET integration | 66 | the real platform on PostgreSQL and RabbitMQ (Testcontainers): saga, tenant isolation, forged JWTs, refresh-token reuse, idempotency, DLQ, SLA job |
+| Front-end (Vitest) | 98 | API client, real-time layer, route guards, forms |
+| Browser (Playwright) | 56 | full user journeys with several people in isolated browsers, security, accessibility (axe, WCAG AA), mobile |
+| Cluster checks | 11 | privileged pod rejected, network paths blocked, 0 failed requests while killing pods |
+
+CI runs everything on every push: build and tests, front-end checks, dependency audits, the complete Docker stack with smoke and browser tests,
+and a fresh Kubernetes (kind) cluster. Details in [docs/ci-cd.md](docs/ci-cd.md).
+
+## Design decisions worth reading
+
+- **Why an Outbox?** Saving the data and publishing the event are two systems; one can fail after the other. The event is written in the *same transaction* as the data and published afterwards, so nothing is lost or invented.
+- **Why a saga with compensation?** Creating a company touches two services and no distributed transaction exists. Each step is local, and failure triggers an explicit undo.
+- **Why events carry no secrets or content?** Passwords never travel in events, and the comment event carries no text: the owning service serves it with the caller's authorization.
+- **Why one replica for Notifications?** SignalR keeps connections in memory. Scaling it needs a Redis backplane, documented as the next step instead of hidden.
+
+## Documentation
+
+The deep dives are in Portuguese, in [`docs/`](docs): [architecture](docs/arquitetura.md) · [security](docs/seguranca.md) · [features](docs/funcionalidades.md) · [observability and tests](docs/observabilidade-e-testes.md) · [running](docs/executando.md) · [CI/CD](docs/ci-cd.md) · [Kubernetes](k8s/README.md).
 
 ## Roadmap
 
-- [x] Fase 1 — serviço Tickets, EF Core, PostgreSQL, isolamento por tenant (Global Query Filter)
-- [x] Fase 2 — serviço Identity (registro, login, JWT com claim de tenant, papéis, refresh tokens)
-- [x] Fase 3 — API Gateway (YARP): entrada única, validação de JWT, rate limiting por tenant
-- [x] Fase 4 — eventos com RabbitMQ (Identity → Tickets/Notifications), serviço Notifications, DLQ, idempotência
-- [x] Fase 5 — Outbox, SLA com job agendado, serviço Tenants e saga de onboarding com compensação e timeout
-- [x] Fase 6 — testes (unitários + integração com Testcontainers), observabilidade (Serilog, OpenTelemetry, health), Docker e CI/CD
-- [x] Kubernetes — Kustomize, Pod Security `restricted`, NetworkPolicy, initContainer de migração, probes, exemplo de produção, CI com kind
-- [ ] Redis como backplane do SignalR (para escalar o Notifications para 2+ réplicas)
+- [x] Tickets, Identity, API gateway, events, Outbox, SLA job, Tenants and the onboarding saga
+- [x] Tests, observability, Docker, CI/CD
+- [x] React front-end, Playwright end-to-end tests, real-time notifications (SignalR), ticket conversations, plan limits
+- [x] Kubernetes
+- [ ] Redis backplane for SignalR (scale Notifications beyond one replica)
+- [ ] `httpOnly`-cookie BFF for the refresh token
+- [ ] Plan changes and billing events, attachments, ticket pagination and search
+
+## License
+
+[MIT](LICENSE) © Rian Nascimento Alves
