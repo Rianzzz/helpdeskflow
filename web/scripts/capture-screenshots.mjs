@@ -138,3 +138,8 @@ const desktop = { viewport: { width: 1280, height: 800 }, locale: 'pt-BR', baseU
 await browser.close()
 await api.dispose()
 console.log(`Imagens gravadas em ${OUT}`)
+// A empresa de demonstração continua no banco: dá para entrar com estas contas e explorar (senha de desenvolvimento).
+console.log(`Contas de demonstração (senha: ${PASSWORD}):`)
+console.log(`  administradora  ${adminEmail}`)
+console.log(`  atendente       ${agentEmail}`)
+console.log(`  cliente         ${customerEmail}`)
